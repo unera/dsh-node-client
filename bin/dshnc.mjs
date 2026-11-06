@@ -146,7 +146,8 @@ async function main (argv) {
       return 0
     }
     for (const row of rows) {
-      const when = new Date(row.at).toISOString().replace('T', ' ').slice(0, 19)
+      // локальное время: аудит читает человек, а не машина
+      const when = new Date(row.at).toLocaleString('sv-SE').replace('T', ' ')
       const session = (row.session ?? '—').replace(/^session-/, '').slice(0, 8)
       out(`${when}  ${row.mode}  код ${row.code ?? '—'}  ${session}  ${row.command.replace(/\s+/g, ' ').slice(0, 120)}`)
     }
