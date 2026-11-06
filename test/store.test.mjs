@@ -73,3 +73,41 @@ test('старый config.json с серверами переезжает по �
   store.close()
   rmSync(dir, { recursive: true, force: true })
 })
+
+test('исполненные миграции записываются в БД и не повторяются', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dshnc-migr-'))
+  const first = openStore({ dir })
+  const db1 = new (await import('node:sqlite')).DatabaseSync(join(dir, 'state.sqlite'))
+  const applied = db1.prepare('SELECT id FROM migrations ORDER BY id').all().map((row) => row.id)
+  db1.close()
+  assert.deepEqual(applied, ['0001_init', '0002_split_config'])
+  first.close()
+
+  // второй запуск: шагов не прибавилось, повторно ничего не применилось
+  const second = openStore({ dir })
+  second.close()
+  const db2 = new (await import('node:sqlite')).DatabaseSync(join(dir, 'state.sqlite'))
+  const again = db2.prepare('SELECT COUNT(*) AS n FROM migrations').get().n
+  db2.close()
+  assert.equal(again, 2, 'уже исполненные шаги не должны дублироваться')
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('credentials.yaml хранит список серверов, а старый формат читается', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dshnc-cred2-'))
+  const store = openStore({ dir })
+  store.setToken(URL_A, 'token-a')
+  store.setToken(URL_B, 'token-b')
+  store.close()
+
+  const text = readFileSync(join(dir, 'credentials.yaml'), 'utf8')
+  assert.match(text, /^servers:/m, 'должен быть список серверов')
+  assert.match(text, /- url: https:\/\/dsh\.uvw\.ru\/dsh-nodes/m)
+
+  // старый формат: карта url → token
+  writeFileSync(join(dir, 'credentials.yaml'), `${URL_A}: old-token\n`)
+  const old = openStore({ dir })
+  assert.equal(old.token(URL_A), 'old-token', 'старый формат должен читаться')
+  old.close()
+  rmSync(dir, { recursive: true, force: true })
+})
