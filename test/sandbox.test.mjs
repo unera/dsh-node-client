@@ -33,9 +33,10 @@ test('в ro-профиле нет привязки на запись, в rw ес
   assert.deepEqual(profileArgs({ mode: 'full' }), [], 'full не оборачивается')
 })
 
-test('отказ распознаётся только при ненулевом коде и сигнатуре', () => {
+test('отказ распознаётся по сигнатуре, код возврата — вторичен', () => {
   assert.equal(classify({ code: 1, stderr: 'cannot touch: Read-only file system', mode: 'ro' }).denied, true)
-  assert.equal(classify({ code: 0, stderr: 'Read-only file system', mode: 'ro' }).denied, false, 'код 0 — не отказ')
+  // составная команда может вернуть 0, хотя запись уже отвергнута ядром
+  assert.equal(classify({ code: 0, stderr: 'bash: /x: Read-only file system', mode: 'ro' }).denied, true)
   assert.equal(classify({ code: 1, stderr: 'bwrap: No permissions to creating new namespace', mode: 'ro' }).runnerFailure, true)
   assert.equal(classify({ code: 1, stderr: 'command not found', mode: 'ro' }).denied, false)
   assert.equal(classify({ code: 1, stderr: 'Read-only file system', mode: 'full' }).denied, false)
@@ -64,7 +65,8 @@ test('песочница реально не даёт писать вне workdi
   const inside = await runBash({ command: 'echo ok > inside.txt && cat inside.txt', cwd: work, sandbox })
   assert.match(inside.results[0].text, /ok/)
 
-  const denied = await runBash({ command: `echo hack > ${outside}`, cwd: work, sandbox })
+  // составная команда: код возврата 0, но запись отвергнута — отказ всё равно должен быть виден
+  const denied = await runBash({ command: `echo hack > ${outside}; echo код $?`, cwd: work, sandbox })
   const report = JSON.parse(denied.results.at(-1).text)
   assert.equal(report.sandbox.mode, 'rw')
   assert.equal(report.sandbox.denied, true, 'запись вне workdir должна быть отказом')
