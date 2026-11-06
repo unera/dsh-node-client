@@ -14,42 +14,52 @@ import { join } from 'node:path'
 import { loadConfig, normalizeUrl, saveConfig, home } from '../lib/config.mjs'
 import { enrollServer, pairServer, runServer } from '../lib/runner.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
+import { detectLang, setLang, t } from '../lib/i18n.mjs'
 
-const HELP = `dshnc — клиент dsh-nodes (${home()})
-
-  connect <url>            подключиться: ссылка с кодом связывает всё сама,
-                           без кода — заявка и ожидание одобрения в админке
-  daemon [url...]          работать: объявить bash, забирать команды, отвечать
-                           без аргументов — все серверы из конфига;
-                           работает на переднем плане (фон — через systemd/nohup)
-  --foreground             оставлено для совместимости, поведение то же
-  status                   показать id клиента и сохранённые серверы
-  help                     этот экран
-
-  Переменные: DSHNC_HOME (каталог состояния), DSHNC_SHELL (шелл, по умолчанию /bin/sh)
-`
+const HELP = () => [
+  t('help.title', { home: home() }),
+  '',
+  '  ' + t('help.connect'),
+  '  ' + t('help.connect2'),
+  '  ' + t('help.daemon'),
+  '  ' + t('help.daemon2'),
+  '  ' + t('help.daemon3'),
+  '  ' + t('help.foreground'),
+  '  ' + t('help.status'),
+  '  ' + t('help.help'),
+  '',
+  '  ' + t('help.env'),
+  '',
+].join('\n')
 
 const out = (line) => process.stdout.write(`${line}\n`)
 
 async function main (argv) {
+  setLang(detectLang())
   const [command, ...rest] = argv
   const config = loadConfig()
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
-    out(HELP)
+    out(HELP())
     return 0
   }
 
   if (command === 'status') {
-    out(`id клиента: ${config.id}`)
-    out(`имя:        ${config.name}`)
+    out(t('status.id', { id: config.id }))
+    out(t('status.name', { name: config.name }))
     const servers = Object.entries(config.servers ?? {})
     if (!servers.length) {
-      out('серверов нет — начни с `dshnc connect <url>`')
+      out(t('status.none'))
       return 0
     }
     for (const [url, state] of servers) {
-      out(`${url}: ${state.token ? 'токен есть' : 'токена нет'}, курсор ${state.cursor ?? '—'}, epoch ${state.epoch ?? '—'}${state.alias ? `, узел ${state.alias}` : ''}`)
+      out(t('status.server', {
+        url,
+        token: state.token ? t('status.token.yes') : t('status.token.no'),
+        cursor: state.cursor ?? '—',
+        epoch: state.epoch ?? '—',
+        alias: state.alias ? t('status.alias', { alias: state.alias }) : '',
+      }))
     }
     return 0
   }
@@ -57,7 +67,7 @@ async function main (argv) {
   if (command === 'connect') {
     const url = rest[0]
     if (!url) {
-      process.stderr.write('нужен url: dshnc connect https://dsh.example/dsh-nodes/pair?v=...\n')
+      process.stderr.write(t('err.needUrl') + '\n')
       return 2
     }
     const withCode = url.includes('?')
@@ -65,7 +75,7 @@ async function main (argv) {
       ? await pairServer({ url, config, print: out })
       : await enrollServer({ url: normalizeUrl(url), config, print: out })
     saveConfig(config)
-    out('готово. дальше: dshnc daemon')
+    out(t('connect.done'))
     return state ? 0 : 1
   }
 
@@ -73,19 +83,19 @@ async function main (argv) {
     const urls = rest.filter((arg) => !arg.startsWith('--'))
     const targets = urls.length ? urls.map(normalizeUrl) : Object.keys(config.servers ?? {})
     if (!targets.length) {
-      process.stderr.write('нечего обслуживать: сначала `dshnc connect <url>`\n')
+      process.stderr.write(t('err.nothingToServe') + '\n')
       return 2
     }
     const controller = new AbortController()
     const stop = () => {
-      out('останавливаюсь')
+      out(t('daemon.stopping'))
       controller.abort()
     }
     process.on('SIGINT', stop)
     process.on('SIGTERM', stop)
     const plugins = await loadPlugins({ dir: join(home(), 'plugins'), log: (level, message) => out(message) })
-    out(`серверы: ${targets.join(', ')}`)
-    out(`плагины: ${plugins.map((plugin) => plugin.api.name).join(', ')}`)
+    out(t('daemon.servers', { servers: targets.join(', ') }))
+    out(t('daemon.plugins', { plugins: plugins.map((plugin) => plugin.api.name).join(', ') }))
     const shell = process.env.DSHNC_SHELL ?? '/bin/sh'
     await Promise.all(targets.map((url) => runServer({
       url,
@@ -100,11 +110,11 @@ async function main (argv) {
     return 0
   }
 
-  process.stderr.write(`неизвестная команда: ${command}\n\n${HELP}`)
+  process.stderr.write(t('cmd.unknown', { command }) + '\n\n' + HELP())
   return 2
 }
 
 main(process.argv.slice(2)).then((code) => process.exit(code)).catch((error) => {
-  process.stderr.write(`ошибка: ${error.message}\n`)
+  process.stderr.write(t('err.generic', { message: error.message }) + '\n')
   process.exit(1)
 })

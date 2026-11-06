@@ -17,6 +17,7 @@ import { Queue } from '../../dsh-nodes/lib/queue.mjs'
 import { createNodesServer } from '../../dsh-nodes/lib/server.mjs'
 import { createPresence } from '../../dsh-nodes/lib/ws.mjs'
 import { loadConfig, serverState } from '../lib/config.mjs'
+import { setLang } from '../lib/i18n.mjs'
 import { runServer } from '../lib/runner.mjs'
 
 const ADMIN = 'admin-token'
@@ -50,6 +51,7 @@ before(async () => {
 
   config = loadConfig()
   controller = new AbortController()
+  setLang('en')
 })
 
 after(() => {
@@ -133,4 +135,17 @@ test('состояние соединения сохраняется per URL', a
   assert.ok(state.token, 'токен должен лежать в конфиге')
   const other = serverState(config, 'http://127.0.0.1:1/other')
   assert.equal(other.cursor, null, 'у другого сервера своё состояние')
+})
+
+test('idle-цикл не завершается сам: демон должен жить', async () => {
+  const state = serverState(config, base)
+  state.announced = false // без присутствия и без работы — самый опасный случай
+  const fresh = new AbortController()
+  const running = runServer({ url: base, config, print: () => {}, signal: fresh.signal, pollIdleMs: 50 })
+  const outcome = await Promise.race([
+    running.then((value) => ({ ended: true, value })),
+    new Promise((resolve) => setTimeout(() => resolve({ ended: false }), 400)),
+  ])
+  fresh.abort()
+  assert.equal(outcome.ended, false, 'runServer вышел сам — процесс-демон умрёт на простое')
 })

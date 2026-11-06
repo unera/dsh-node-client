@@ -19,6 +19,7 @@ import { createNodesServer } from '../../dsh-nodes/lib/server.mjs'
 import { createPresence } from '../../dsh-nodes/lib/ws.mjs'
 import { loadConfig, serverState } from '../lib/config.mjs'
 import { pairServer, runServer } from '../lib/runner.mjs'
+import { setLang } from '../lib/i18n.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
 
 const ADMIN = 'admin-pair'
@@ -50,6 +51,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}/dsh-nodes`
   config = loadConfig()
   controller = new AbortController()
+  setLang('en')
 })
 
 after(() => {
@@ -79,7 +81,7 @@ test('ссылка из админки подключает клиента бе�
   const state = serverState(config, base)
   assert.ok(state.token, 'токен должен сохраниться')
   assert.ok(state.node, 'номер узла должен сохраниться')
-  assert.match(printed.join(' '), /подключено/)
+  assert.match(printed.join(' '), /connected: node 1/)
 
   const again = await fetch(`${base}/v1/pair`, {
     method: 'POST',
