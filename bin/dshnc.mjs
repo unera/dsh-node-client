@@ -86,7 +86,12 @@ async function main (argv) {
     if (rest[0]) {
       const dir = resolve(rest[0])
       mkdirSync(dir, { recursive: true })
-      openStore().saveSettings({ workdir: dir })
+      try {
+        openStore().saveSettings({ workdir: dir })
+      } catch (error) {
+        process.stderr.write(t('err.writeState', { message: error.message }) + '\n')
+        return 1
+      }
       config.workdir = dir
       out(t('workdir.set', { dir: config.workdir }))
     } else {
@@ -121,7 +126,14 @@ async function main (argv) {
     }
     config.policy ??= {}
     config.policy[target] = { ...(config.policy[target] ?? {}), ...patch }
-    store.saveSettings({ policy: config.policy })
+    try {
+      store.saveSettings({ policy: config.policy })
+    } catch (error) {
+      // частая причина — попытка поменять политику изнутри песочницы: писать
+      // в ~/.dshnc там нельзя, и молчать об этом нельзя тоже
+      process.stderr.write(t('err.writeState', { message: error.message }) + '\n')
+      return 1
+    }
     out(t('policy.saved', { url: target, patch: JSON.stringify(patch) }))
     return 0
   }
