@@ -1,0 +1,64 @@
+/**
+ * Плагины клиента: встроенный bash, пользовательский плагин из ~/.dshnc,
+ * изоляция сломанного плагина и pairing-подключение по ссылке.
+ */
+import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { after, before, test } from 'node:test'
+
+import { apisOf, loadPlugins, resolvePlugin } from '../lib/plugins/index.mjs'
+
+let dir
+before(() => { dir = mkdtempSync(join(tmpdir(), 'dshnc-plugins-')) })
+after(() => rmSync(dir, { recursive: true, force: true }))
+
+test('встроенный bash грузится всегда и первым', async () => {
+  const plugins = await loadPlugins({ dir })
+  assert.equal(plugins[0].api.name, 'bash')
+  assert.equal(plugins[0].api.methods[0].method, 'exec')
+  assert.equal(plugins[0].builtin, true)
+})
+
+test('пользовательский плагин подхватывается из каталога', async () => {
+  const home = join(dir, 'plug')
+  mkdirSync(join(home, 'echo'), { recursive: true })
+  writeFileSync(join(home, 'echo', 'index.mjs'), `
+export const api = {
+  name: 'echo',
+  version: '1',
+  methods: [{ method: 'say', args: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } }],
+}
+export async function handle (command) {
+  return { ok: true, results: [{ type: 'text', text: String(command.args?.text ?? '') }] }
+}
+`)
+  const plugins = await loadPlugins({ dir: home })
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash', 'echo'])
+  assert.deepEqual(apisOf(plugins).map((entry) => entry.name), ['bash', 'echo'])
+
+  const plugin = resolvePlugin(plugins, { api: 99, method: 'say' }, {})
+  assert.equal(plugin.api.name, 'echo')
+  const outcome = await plugin.handle({ method: 'say', args: { text: 'привет' } })
+  assert.equal(outcome.results[0].text, 'привет')
+})
+
+test('сломанный плагин не уносит остальные', async () => {
+  const home = join(dir, 'broken')
+  mkdirSync(join(home, 'bad'), { recursive: true })
+  writeFileSync(join(home, 'bad', 'index.mjs'), 'export const api = { name: "bad" }')
+  const warnings = []
+  const plugins = await loadPlugins({ dir: home, log: (level, message) => warnings.push(message) })
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash'])
+  assert.match(warnings.join(' '), /bad/)
+})
+
+test('resolvePlugin сначала по номеру API, потом по методу', async () => {
+  const plugins = await loadPlugins({ dir })
+  const byId = resolvePlugin(plugins, { api: 7, method: 'exec' }, { bash: 7 })
+  assert.equal(byId.api.name, 'bash')
+  const byMethod = resolvePlugin(plugins, { api: 404, method: 'exec' }, { bash: 7 })
+  assert.equal(byMethod.api.name, 'bash')
+  assert.equal(resolvePlugin(plugins, { api: 404, method: 'nope' }, {}), null)
+})
