@@ -82,8 +82,8 @@ async function main (argv) {
   }
 
   if (command === 'workdir') {
-    if (args[0]) {
-      config.workdir = resolve(args[0])
+    if (rest[0]) {
+      config.workdir = resolve(rest[0])
       mkdirSync(config.workdir, { recursive: true })
       saveConfig(config)
       out(t('workdir.set', { dir: config.workdir }))
