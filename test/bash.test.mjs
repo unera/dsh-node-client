@@ -65,3 +65,28 @@ test('плагин bash запускает команду в каталоге с
   assert.match(outcome.results[0].text, /sess-42/)
   rmSync(root, { recursive: true, force: true })
 })
+
+test('опасный идентификатор сессии отвергается, а не выводит за workdir', async () => {
+  const { sessionDir } = await import('../lib/bash.mjs')
+  const root = mkdtempSync(join(tmpdir(), 'dshnc-work3-'))
+  // ровно эти два означают «сам каталог» и «родитель» — их не превратить в имя
+  for (const bad of ['..', '.']) {
+    assert.throws(() => sessionDir({ workdir: root, session: bad }), /недопустимый/)
+  }
+  // остальное чистится до безопасного имени и не выходит за workdir
+  for (const weird of ['/', '../..', 'a/../../b']) {
+    const dir = sessionDir({ workdir: root, session: weird })
+    assert.ok(dir.startsWith(root + '/'), `каталог ${dir} должен лежать внутри ${root}`)
+    assert.ok(!dir.includes('/../'))
+  }
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('плагин честно отказывает, если каталог сессии не сделать', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'dshnc-work4-'))
+  const { handle } = await import('../lib/plugins/bash.mjs')
+  const outcome = await handle({ method: 'exec', args: { command: 'pwd' } }, { workdir: root, session: '..' })
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.code, 'bad_session')
+  rmSync(root, { recursive: true, force: true })
+})
