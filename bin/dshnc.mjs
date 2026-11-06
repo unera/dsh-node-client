@@ -113,7 +113,11 @@ async function main (argv) {
     const target = normalizeUrl(url)
     const patch = {}
     for (const pair of pairs) {
-      const [key, value] = pair.split('=')
+      // делим по первому «=»: значение само может содержать «=» (zenity --width=600)
+      const at = pair.indexOf('=')
+      if (at < 0) continue
+      const key = pair.slice(0, at)
+      const value = pair.slice(at + 1)
       if (!value) continue
       if (key === 'max') patch.max = value
       if (key === 'ask') patch.ask = value === 'true' || value === '1'
