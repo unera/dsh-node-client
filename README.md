@@ -1,97 +1,73 @@
 # dsh-node-client
 
-`dshnc` — клиент [dsh-nodes](../dsh-nodes): объявляет машину узлом и исполняет
-команды сервера. Умеет то, что приносят его плагины; из коробки — `bash`.
+`dshnc` — the node side of [dsh-nodes](https://github.com/unera/dsh-nodes):
+it connects a machine to a DSH server, fetches commands, runs them inside a
+sandbox and reports back.
 
-## Установка
+Zero runtime dependencies. One foreground process, systemd-friendly, no daemon
+libraries.
 
-Нужен Node 22 или новее (используется `node:sqlite` и встроенный `WebSocket`).
-
-```sh
-git clone https://github.com/unera/dsh-node-client
-cd dsh-node-client
-npm install -g .        # ставит исполняемый файл dshnc
-dshnc help
-```
-
-Без установки тоже работает:
+## Install
 
 ```sh
-node /path/to/dsh-node-client/bin/dshnc.mjs help
+npm install -g unera/dsh-node-client
+systemctl --user restart dshnc
 ```
 
-Обновление — `git pull && npm install -g .`. Удаление — `npm uninstall -g dsh-node-client`;
-состояние в `~/.dshnc` при этом остаётся, его удаляют руками.
-
-## Подключение
-
-Два способа, и первый короче.
-
-**По ссылке из админки** — ничего подтверждать не нужно:
-
-1. в админке DSH нажать «сгенерировать ссылку» (живёт 10 минут, срабатывает один раз);
-2. на машине узла: `dshnc connect 'https://dsh.example/dsh-nodes/pair?v=...'`;
-3. клиент сам получает токен: `подключено: узел 3 (nbw), токен сохранён`.
-
-**Заявкой** — если ссылки нет:
+## Connect
 
 ```sh
-dshnc connect https://dsh.example/dsh-nodes
-# заявка отправлена: nbw / 7f3a-9c21
-# в админке её надо «допустить» — клиент получит токен сам
+dshnc connect 'https://host/dsh-nodes/pair?v=<code>'   # pairing link
+dshnc daemon                                            # serve every configured server
 ```
 
-Дальше в обоих случаях:
+## Built-in APIs
 
-```sh
-dshnc daemon
+Everything the client can do lives in a plugin. Two ship in the box.
+
+**`bash`** — run a shell command.
+
+```
+exec(command, cwd?, timeout?) → stdout, stderr, {"code":…,"signal":…,"cwd":…,"sandbox":{…}}
 ```
 
-Состояние живёт в `~/.dshnc` (`DSHNC_HOME` переопределяет): `config.json` с
-id клиента и записью на каждый сервер.
+Output above 48 KiB is truncated with a visible marker. A command that outlives
+its timeout is killed. The `sandbox` block in the last result is the client's
+honest report: the mode it actually ran in, whether the kernel denied something
+and under which signature (`read-only file system` and the like).
 
-## Автозапуск
+**`session`** — session state on the node, version 3.
 
-`daemon` работает на переднем плане; проще всего отдать это systemd:
-
-```ini
-# ~/.config/systemd/user/dshnc.service
-[Unit]
-Description=dsh-nodes client
-After=network-online.target
-
-[Service]
-ExecStart=%h/.nvm/versions/node/v24.22.0/bin/dshnc daemon
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=default.target
+```
+chdir(path)              → move the session workdir inside the allowed roots
+mkdir(path, mode?)       → create a directory for the session
+cwd()                    → where the session currently is
+approve(id, text, mode)  → ask the human on this machine; returns ok/cancel
 ```
 
-```sh
-systemctl --user daemon-reload
-systemctl --user enable --now dshnc
-journalctl --user -u dshnc -f
-```
+`approve` is deliberately not a shell command: it runs the tool configured in
+`ask.local.tool` (a `zenity` dialog, a script, anything), never goes through the
+sandbox, and cannot be denied by the kernel. Without a configured tool it fails
+with `no_local_approver` instead of pretending a question was asked.
 
-## Плагины
+Bump the API version whenever its contract changes. The version is the
+**contract** version: nodes announcing different versions of the same name stay
+separate, and fusing them would make the server use whichever schema it saw
+first.
 
-`bash` — первый плагин, но не единственный: всё, что клиент умеет, живёт в
-плагинах. Встроенный `bash` лежит в пакете, свои плагины кладутся в
-`~/.dshnc/plugins/<имя>/index.mjs` и подхватываются при запуске.
+## Write your own plugin
 
-Плагин — один файл с двумя экспортами:
+Drop a directory into `~/.dshnc/plugins/<name>/index.mjs`; it is loaded at
+startup and its API is announced to the server.
 
 ```js
-// ~/.dshnc/plugins/lamp/index.mjs
 export const api = {
-  name: 'lamp',            // имя API, его увидит сервер
-  version: '1',            // необязательно; меняется вместе с контрактом
-  description: 'Лампа на столе',
+  name: 'lamp',                 // what the server will see
+  version: '1',                 // bump with the contract
+  description: 'Desk lamp',
   methods: [{
     method: 'set',
-    description: 'Включить или выключить',
+    description: 'Turn on or off',
     args: {
       type: 'object',
       properties: { state: { type: 'string', enum: ['on', 'off'] } },
@@ -103,58 +79,117 @@ export const api = {
 
 export async function handle (command, ctx) {
   if (command.method !== 'set') {
-    return { ok: false, code: 'unknown_method', message: `нет метода ${command.method}` }
+    return { ok: false, code: 'unknown_method', message: `no method ${command.method}` }
   }
-  const { state } = command.args
-  // ... сделать делом
-  return { ok: true, results: [{ type: 'text', text: `лампа ${state}` }] }
+  return { ok: true, results: [{ type: 'text', text: `lamp ${command.args.state}` }] }
 }
 ```
 
-Правила, которых стоит держаться:
+`args` is mandatory (at least `{ type: 'object' }`): the server refuses an
+announcement without a schema. `handle` returns `{ok: true, results: [...]}` or
+`{ok: false, code, message}` with a code from the server's vocabulary
+(`bad_args`, `timeout`, `internal`, …). `ctx` carries `shell`, `signal`
+(cancellation of that call), `sandbox`, `sessions` and `approver`.
 
-- `api.methods[].args` — обязательное поле, хотя бы `{ type: 'object' }`: без
-  схемы сервер отклонит объявление;
-- `handle` возвращает `{ok: true, results: [...]}` или `{ok: false, code, message}`;
-  `code` — из закрытого словаря сервера (`bad_args`, `timeout`, `internal`, …);
-- `ctx` даёт `shell` и `signal` (отмена вызова);
-- ошибка в плагине не роняет остальные: он выпадает с предупреждением в лог;
-- имя API уникально: плагин, объявивший занятое имя, пропускается.
+A plugin that throws is dropped with a warning; the rest keep working. A plugin
+claiming a name that is already taken is skipped.
 
-## Команды
+## Sandbox and policy
 
-| команда | что делает |
-|---|---|
-| `dshnc connect <url>` | подключение: ссылка с кодом — сразу, без кода — через заявку и одобрение |
-| `dshnc daemon [url...]` | объявить `bash`, забирать команды, отвечать; без аргументов — все серверы из конфига |
-| `dshnc status` | id клиента и сохранённые серверы |
-| `dshnc help` | экран помощи |
+The owner of the machine decides what the server may do. Policy lives on the
+node, not on the server:
 
-Один клиент обслуживает несколько серверов: токен, курсор и `epoch` хранятся
-**per URL**, реконнект считается отдельно для каждого.
-
-Присутствие — по WebSocket (`/v1/ws`, токен едет подпротоколом, не в URL):
-`hello` со сверкой поколения, `alive` раз в 20 с, кадр `state` будит цикл
-сразу. Без сети WebSocket клиент продолжает работать опросом, просто узнаёт о
-работе с задержкой.
-
-## Что объявляет клиент
-
-```
-api: bash, version 1
-  exec(command, cwd?, timeout?) → stdout, stderr, {code, signal, cwd}
+```json
+{
+  "max": "full",        // absolute ceiling, never exceeded
+  "base": "rw",         // mode a command starts in; approved commands skip it
+  "approver": "local",  // local | server | none
+  "roots": ["/home/unera/work/ai"],
+  "workdir": "/home/unera/work/ai/.dsh",
+  "ask": {
+    "local": { "enabled": true, "tool": { "type": "external", "command": "zenity --text-info --width=600" } }
+  }
+}
 ```
 
-Плюс всё, что найдено в `~/.dshnc/plugins/*` — каждый плагин объявляет свой API
-и получает свои номера от сервера.
-
-Вывод крупнее 48 КиБ обрезается с явной пометкой — модель должна видеть, что
-ей показали не всё. Команда без ответа за свой `timeout` убивается по SIGKILL.
-
-## Разработка
+`dshnc policy` reads and edits it:
 
 ```sh
-node --test test/*.test.mjs
+dshnc policy https://host/dsh-nodes max=full base=rw approver=local \
+  tool="zenity --text-info --width=600"
 ```
 
-Тест гоняет настоящий цикл клиента против настоящего сервера плагина.
+The template in `ask.local.tool` either contains `%s` (the question is
+substituted into an argument) or not (the question goes to stdin, as
+`zenity --text-info` expects — then its length is unbounded). Structured data
+travelling with the question arrives in `DSHNC_APPROVAL_ID` and
+`DSHNC_APPROVAL_MODE`. The command is started without a shell, so nothing from
+the question can become shell syntax.
+
+Sandboxing uses `bwrap` when it is available: `ro` is a read-only bind of `/`,
+`rw` adds writable binds for `roots`, `full` runs unconfined. `no_new_privs` is
+set, so `sudo` and setuid do not work inside. Network is unshared in `ro`/`rw`.
+
+## Audit
+
+Commands executed without a sandbox leave a trace:
+
+```sh
+dshnc audit 20
+```
+
+Rows are kept in a ring (2000 rows, 7 days) — a node that lives for months must
+not fill the disk with a log nobody reads.
+
+## Control channel
+
+Polling pulls batches over HTTP; a WebSocket (`/v1/ws`, token in the
+subprotocol, never in the URL) tells the client that work exists, so it does not
+wait for the next poll. Without the socket the client still works, just with
+poll latency.
+
+Batches run in parallel with a cap (`maxConcurrent`, default 5): one model turn
+can produce a dozen calls, and a node must not be flooded. `session.chdir` is
+applied first and in order — it changes the session working directory, so the
+rest of the batch must start in the new one. `session.approve` runs outside the
+pool: a dialog may hang for a day and must not hold a slot.
+
+## MCP (planned)
+
+The client is a natural place to bridge MCP servers: a local MCP server becomes
+one more API on the node, and the model reaches it through `nodes_call` without
+learning new tools. Two transports are wanted:
+
+| transport | how it is configured | note |
+|---|---|---|
+| stdio | `command` + `args`, client spawns the process | works for `npx @modelcontextprotocol/server-*`, no network |
+| `host:port` | URL of an HTTP/SSE endpoint | the server may live elsewhere, the node only proxies |
+
+An MCP server named `files` would be announced as API `mcp-files` with one
+method per MCP tool, the tool's JSON Schema reused as `args`. Nothing in the
+protocol changes: the server already passes arbitrary schemas through.
+
+Not implemented yet. When it is, the section will say so plainly instead of
+describing intentions.
+
+## Commands
+
+| command | what it does |
+|---|---|
+| `dshnc connect <url>` | pairing link — at once, otherwise a request pending approval |
+| `dshnc daemon [url...]` | announce APIs, fetch commands, answer; no arguments — every configured server |
+| `dshnc status` | client id and saved servers |
+| `dshnc policy [url] [key=value…]` | show or change policy for one server |
+| `dshnc audit [n]` | commands executed without the sandbox |
+| `dshnc workdir [path]` | show or set the session working directory |
+
+One client serves several servers: token, cursor and epoch are kept **per URL**.
+
+## Development
+
+```sh
+npm test     # node --test, sequential: integration tests start real servers
+```
+
+The Russian guide is in [`docs/guide.ru.md`](docs/guide.ru.md); storage rules,
+policy and sandbox notes are in [`STORAGE.md`](STORAGE.md).
