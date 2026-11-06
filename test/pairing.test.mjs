@@ -16,12 +16,14 @@ import { WebSocketServer } from 'ws'
 import { Store } from '../../dsh-nodes/lib/db.mjs'
 import { Queue } from '../../dsh-nodes/lib/queue.mjs'
 import { createNodesServer } from '../../dsh-nodes/lib/server.mjs'
+import { handleAdmin } from '../../dsh-nodes/lib/admin-api.mjs'
 import { createPresence } from '../../dsh-nodes/lib/ws.mjs'
 import { loadConfig, serverState } from '../lib/config.mjs'
 import { pairServer, runServer } from '../lib/runner.mjs'
 import { setLang } from '../lib/i18n.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
 
+const NODES_CONFIG = { routePrefix: '/dsh-nodes', aliveTimeoutSeconds: 60, maxPendingEnroll: 50, maxBodyBytes: 65536 }
 const ADMIN = 'admin-pair'
 let dir
 let store
@@ -63,12 +65,22 @@ after(() => {
   delete process.env.DSHNC_HOME
 })
 
+// Админка больше не живёт на публичном префиксе: операции вызываются
+// функциями плагина с тем же store и queue, что и у поднятого сервера.
+const deps = () => ({ store, queue, config: NODES_CONFIG, prefix: '/dsh-nodes', origin: base.replace(/\/dsh-nodes$/, '') })
+
 async function admin (path, options = {}) {
-  const response = await fetch(base + path, {
-    ...options,
-    headers: { authorization: `Bearer ${ADMIN}`, 'content-type': 'application/json', ...options.headers },
-  })
-  return { status: response.status, body: await response.json() }
+  const method = options.method ?? 'GET'
+  const body = options.body ? JSON.parse(options.body) : {}
+  const rest = String(path).replace(/^\/v1\/admin/, '')
+  const parts = rest.split('/').filter(Boolean)
+  if (parts[0] === 'pairing') return handleAdmin(deps(), 'POST', '/pairing', body)
+  if (parts[0] === 'pending' && parts[2] === 'approve') return handleAdmin(deps(), 'POST', rest, body)
+  if (parts[0] === 'pending' && parts[2] === 'reject') return handleAdmin(deps(), 'POST', rest, body)
+  if (parts[0] === 'pending') return handleAdmin(deps(), 'GET', '/pending', {})
+  if (parts[0] === 'nodes' && parts[1]) return handleAdmin(deps(), 'POST', rest, body)
+  if (parts[0] === 'nodes') return handleAdmin(deps(), method, '/nodes', body)
+  throw new Error(`нет админ-маршрута ${path}`)
 }
 
 test('ссылка из админки подключает клиента без подтверждения', async () => {
