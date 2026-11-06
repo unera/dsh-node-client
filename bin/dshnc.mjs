@@ -66,7 +66,8 @@ async function main (argv) {
       })
       applyAutostartAnswers(config, result)
       saveConfig(config)
-      out(`узел: ${config.name}${config.aliases?.length ? ', алиасы: ' + config.aliases.join(', ') : ''}`)
+      out(t('auto.nodeSummary', { name: config.name })
+        + (config.aliases?.length ? t('auto.aliasesSuffix', { aliases: config.aliases.join(', ') }) : ''))
     } finally {
       rl.close()
     }
