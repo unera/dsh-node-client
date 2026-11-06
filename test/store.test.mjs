@@ -80,7 +80,7 @@ test('исполненные миграции записываются в БД �
   const db1 = new (await import('node:sqlite')).DatabaseSync(join(dir, 'state.sqlite'))
   const applied = db1.prepare('SELECT id FROM migrations ORDER BY id').all().map((row) => row.id)
   db1.close()
-  assert.deepEqual(applied, ['0001_init', '0002_split_config', '0003_session_workdir'])
+  assert.deepEqual(applied, ['0001_init', '0002_split_config', '0003_session_workdir', '0004_audit'])
   first.close()
 
   // второй запуск: шагов не прибавилось, повторно ничего не применилось
@@ -89,7 +89,7 @@ test('исполненные миграции записываются в БД �
   const db2 = new (await import('node:sqlite')).DatabaseSync(join(dir, 'state.sqlite'))
   const again = db2.prepare('SELECT COUNT(*) AS n FROM migrations').get().n
   db2.close()
-  assert.equal(again, 3, 'уже исполненные шаги не должны дублироваться')
+  assert.equal(again, 4, 'уже исполненные шаги не должны дублироваться')
   rmSync(dir, { recursive: true, force: true })
 })
 
@@ -109,5 +109,31 @@ test('credentials.yaml хранит список серверов, а стары
   const old = openStore({ dir })
   assert.equal(old.token(URL_A), 'old-token', 'старый формат должен читаться')
   old.close()
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('аудит хранит команды без песочницы и переживает переоткрытие', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dshnc-audit-'))
+  const store = openStore({ dir })
+  store.writeAudit({ session: 'session-1', mode: 'full', command: 'touch /etc/x', code: 1 })
+  store.writeAudit({ session: 'session-2', mode: 'full', command: 'rm -rf /tmp/y', code: 0 })
+  store.close()
+
+  const again = openStore({ dir })
+  const rows = again.readAudit(10)
+  assert.equal(rows.length, 2)
+  assert.equal(rows[0].command, 'rm -rf /tmp/y', 'свежие записи первыми')
+  assert.equal(rows[0].code, 0)
+  again.close()
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('аудит не пухнет от длинных команд', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dshnc-audit2-'))
+  const store = openStore({ dir })
+  store.writeAudit({ session: 's', mode: 'full', command: 'x'.repeat(10000), code: 0 })
+  const row = store.readAudit(1)[0]
+  assert.ok(row.command.length <= 4000, `обрезка не сработала: ${row.command.length}`)
+  store.close()
   rmSync(dir, { recursive: true, force: true })
 })

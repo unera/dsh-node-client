@@ -138,6 +138,21 @@ async function main (argv) {
     return 0
   }
 
+  if (command === 'audit') {
+    const limit = Number(rest[0]) > 0 ? Number(rest[0]) : 20
+    const rows = openStore().readAudit(limit)
+    if (!rows.length) {
+      out(t('audit.empty'))
+      return 0
+    }
+    for (const row of rows) {
+      const when = new Date(row.at).toISOString().replace('T', ' ').slice(0, 19)
+      const session = (row.session ?? '—').replace(/^session-/, '').slice(0, 8)
+      out(`${when}  ${row.mode}  код ${row.code ?? '—'}  ${session}  ${row.command.replace(/\s+/g, ' ').slice(0, 120)}`)
+    }
+    return 0
+  }
+
   if (command === 'status') {
     out(t('status.id', { id: config.id }))
     out(t('status.name', { name: config.name }))
