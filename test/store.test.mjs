@@ -80,7 +80,7 @@ test('исполненные миграции записываются в БД �
   const db1 = new (await import('node:sqlite')).DatabaseSync(join(dir, 'state.sqlite'))
   const applied = db1.prepare('SELECT id FROM migrations ORDER BY id').all().map((row) => row.id)
   db1.close()
-  assert.deepEqual(applied, ['0001_init', '0002_split_config'])
+  assert.deepEqual(applied, ['0001_init', '0002_split_config', '0003_session_workdir'])
   first.close()
 
   // второй запуск: шагов не прибавилось, повторно ничего не применилось
@@ -89,7 +89,7 @@ test('исполненные миграции записываются в БД �
   const db2 = new (await import('node:sqlite')).DatabaseSync(join(dir, 'state.sqlite'))
   const again = db2.prepare('SELECT COUNT(*) AS n FROM migrations').get().n
   db2.close()
-  assert.equal(again, 2, 'уже исполненные шаги не должны дублироваться')
+  assert.equal(again, 3, 'уже исполненные шаги не должны дублироваться')
   rmSync(dir, { recursive: true, force: true })
 })
 

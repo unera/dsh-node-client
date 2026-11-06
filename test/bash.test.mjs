@@ -58,9 +58,12 @@ test('каталог сессии создаётся под workdir и стан�
 test('плагин bash запускает команду в каталоге сессии', async () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-work2-'))
   const { handle } = await import('../lib/plugins/bash.mjs')
+  const { createSessionStore } = await import('../lib/sessions.mjs')
+  const { openStore } = await import('../lib/store.mjs')
+  const sessions = createSessionStore(openStore({ dir: root }))
   const outcome = await handle(
     { method: 'exec', args: { command: 'pwd' } },
-    { workdir: root, session: 'sess-42' },
+    { workdir: join(root, 'work'), session: 'sess-42', sessions, roots: [root] },
   )
   assert.match(outcome.results[0].text, /sess-42/)
   rmSync(root, { recursive: true, force: true })
@@ -85,7 +88,13 @@ test('опасный идентификатор сессии отвергает�
 test('плагин честно отказывает, если каталог сессии не сделать', async () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-work4-'))
   const { handle } = await import('../lib/plugins/bash.mjs')
-  const outcome = await handle({ method: 'exec', args: { command: 'pwd' } }, { workdir: root, session: '..' })
+  const { createSessionStore } = await import('../lib/sessions.mjs')
+  const { openStore } = await import('../lib/store.mjs')
+  const sessions = createSessionStore(openStore({ dir: join(root, 'state') }))
+  const outcome = await handle(
+    { method: 'exec', args: { command: 'pwd' } },
+    { workdir: join(root, 'work'), session: '..', sessions, roots: [root] },
+  )
   assert.equal(outcome.ok, false)
   assert.equal(outcome.code, 'bad_session')
   rmSync(root, { recursive: true, force: true })

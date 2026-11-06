@@ -95,6 +95,37 @@ async function main (argv) {
     return 0
   }
 
+  if (command === 'policy') {
+    const store = openStore()
+    const [url, ...pairs] = rest
+    if (!url) {
+      out(t('policy.current', { access: JSON.stringify(config.access ?? {}), roots: (config.roots ?? []).join(', ') || '—' }))
+      for (const [key, value] of Object.entries(config.policy ?? {})) {
+        out(`${key}: ${JSON.stringify(value)}`)
+      }
+      return 0
+    }
+    const target = normalizeUrl(url)
+    const patch = {}
+    for (const pair of pairs) {
+      const [key, value] = pair.split('=')
+      if (!value) continue
+      if (key === 'max') patch.max = value
+      if (key === 'ask') patch.ask = value === 'true' || value === '1'
+      if (key === 'roots') patch.roots = value.split(':').filter(Boolean)
+      if (key === 'workdir') patch.workdir = resolve(value)
+    }
+    if (!Object.keys(patch).length) {
+      out(JSON.stringify(config.policy?.[target] ?? {}, null, 2))
+      return 0
+    }
+    config.policy ??= {}
+    config.policy[target] = { ...(config.policy[target] ?? {}), ...patch }
+    store.saveSettings({ policy: config.policy })
+    out(t('policy.saved', { url: target, patch: JSON.stringify(patch) }))
+    return 0
+  }
+
   if (command === 'status') {
     out(t('status.id', { id: config.id }))
     out(t('status.name', { name: config.name }))

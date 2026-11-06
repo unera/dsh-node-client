@@ -114,7 +114,7 @@ test('ссылка из админки подключает клиента бе�
 test('после подключения клиент объявляет плагины и исполняет команду', async () => {
   let state = live(base)
   const plugins = await loadPlugins({ dir: join(dir, 'plugins') })
-  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash'])
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash', 'session'])
 
   const running = runServer({ url: base, config, print: () => {}, signal: controller.signal, pollIdleMs: 200, plugins })
 

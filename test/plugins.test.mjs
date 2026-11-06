@@ -35,8 +35,8 @@ export async function handle (command) {
 }
 `)
   const plugins = await loadPlugins({ dir: home })
-  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash', 'echo'])
-  assert.deepEqual(apisOf(plugins).map((entry) => entry.name), ['bash', 'echo'])
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash', 'session', 'echo'])
+  assert.deepEqual(apisOf(plugins).map((entry) => entry.name), ['bash', 'session', 'echo'])
 
   const plugin = resolvePlugin(plugins, { api: 99, method: 'say' }, {})
   assert.equal(plugin.api.name, 'echo')
@@ -50,7 +50,7 @@ test('сломанный плагин не уносит остальные', asy
   writeFileSync(join(home, 'bad', 'index.mjs'), 'export const api = { name: "bad" }')
   const warnings = []
   const plugins = await loadPlugins({ dir: home, log: (level, message) => warnings.push(message) })
-  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash'])
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash', 'session'])
   assert.match(warnings.join(' '), /bad/)
 })
 
