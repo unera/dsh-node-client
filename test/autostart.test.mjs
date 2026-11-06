@@ -119,3 +119,35 @@ test('ExecStart для .mjs несёт интерпретатор', async () => 
     '/usr/bin/node /opt/dshnc/bin/dshnc.mjs',
   )
 })
+
+test('пользователь создаётся сам, когда есть права', async () => {
+  const { createUser } = await import('../lib/autostart.mjs')
+  const calls = []
+  const run = (file, args) => {
+    calls.push([file, ...args])
+    return { status: 0 }
+  }
+  assert.equal(createUser({ user: 'dshnc', uid: 0, run }), true)
+  assert.deepEqual(calls.pop().slice(0, 3), ['useradd', '--system', '--create-home'])
+  assert.equal(createUser({ user: 'dshnc', uid: 1000, hasSudo: true, run }), true)
+  assert.deepEqual(calls.pop().slice(0, 3), ['sudo', '-n', 'useradd'])
+  assert.equal(createUser({ user: 'dshnc', uid: 1000, hasSudo: false, run }), false)
+  assert.equal(calls.length, 0, 'без прав ничего не запускаем')
+})
+
+test('мастер: без прав печатает команду и ждёт пользователя', async () => {
+  const answers = ['lamp', '', 'system', 'y', 'dshnc-new-user', '']
+  const lines = []
+  const result = await runAutostart({
+    ask: async () => answers.shift() ?? '',
+    print: (line) => lines.push(line),
+    config: { name: 'host', aliases: [], servers: {} },
+    execStart: '/usr/bin/dshnc',
+    unitFile: (scope, name) => join(dir, `wait-${name}.service`),
+    hasSudo: false,
+    uid: 1000,
+    run: () => ({ status: 1 }),
+  })
+  assert.equal(result.user, 'dshnc-new-user')
+  assert.ok(lines.some((line) => /useradd/.test(line)), 'должна быть готовая команда для человека')
+})
