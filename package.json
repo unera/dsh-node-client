@@ -1,0 +1,38 @@
+{
+  "name": "dsh-node-client",
+  "version": "0.0.1",
+  "description": "dshnc — клиент dsh-nodes: объявляет bash на машине узла и исполняет команды",
+  "type": "module",
+  "bin": {
+    "dshnc": "./bin/dshnc.mjs"
+  },
+  "exports": {
+    ".": "./lib/runner.mjs",
+    "./api": "./lib/api.mjs",
+    "./bash": "./lib/bash.mjs",
+    "./config": "./lib/config.mjs"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dshnc",
+    "node",
+    "remote",
+    "agent"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unera/dsh-node-client.git"
+  }
+}
