@@ -2,7 +2,7 @@
  * Автозапуск: текст systemd-юнита и диалог мастера.
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -150,4 +150,45 @@ test('мастер: без прав печатает команду и ждёт 
   })
   assert.equal(result.user, 'dshnc-new-user')
   assert.ok(lines.some((line) => /useradd/.test(line)), 'должна быть готовая команда для человека')
+})
+
+test('мастер спрашивает про перенос токена, когда он есть', async () => {
+  const answers = ['lamp', '', 'system', 'y', 'dshnc-copy', 'y']
+  const lines = []
+  const asked = []
+  const source = join(dir, 'source-state')
+  mkdirSync(source, { recursive: true })
+  writeFileSync(join(source, 'config.json'), JSON.stringify({ id: 'x', servers: {} }))
+  const result = await runAutostart({
+    ask: async (question) => {
+      asked.push(question)
+      return answers.shift() ?? ''
+    },
+    print: (line) => lines.push(line),
+    config: { name: 'host', aliases: [], servers: { 'http://x/dsh-nodes': { token: 'tok' } } },
+    execStart: '/usr/bin/dshnc',
+    unitFile: (scope, name) => join(dir, `copy-${name}.service`),
+    hasSudo: true,
+    run: () => ({ status: 0 }),
+    stateFrom: source,
+    stateTo: join(dir, 'target-state'),
+  })
+  assert.ok(asked.some((question) => /Move the current state|перенести|搬到/i.test(question)), 'должен быть вопрос про перенос')
+  assert.equal(result.copied, true, 'перенос должен удаться при подменённом run')
+})
+
+test('без токена мастер не предлагает перенос, а говорит что делать', async () => {
+  const answers = ['lamp', '', 'system', 'y', 'dshnc-notoken']
+  const lines = []
+  const result = await runAutostart({
+    ask: async () => answers.shift() ?? '',
+    print: (line) => lines.push(line),
+    config: { name: 'host', aliases: [], servers: {} },
+    execStart: '/usr/bin/dshnc',
+    unitFile: (scope, name) => join(dir, `nt-${name}.service`),
+    hasSudo: true,
+    run: () => ({ status: 0 }),
+  })
+  assert.equal(result.copied, null)
+  assert.ok(lines.some((line) => /connect <link>|connect <ссылк|connect <链接/.test(line)))
 })
