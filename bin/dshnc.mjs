@@ -12,12 +12,13 @@
  * (токен, курсор, epoch) хранится per URL.
  */
 import { join } from 'node:path'
-import { loadConfig, normalizeUrl, saveConfig, home } from '../lib/config.mjs'
+import { loadConfig, normalizeUrl } from '../lib/config.mjs'
 import { enrollServer, pairServer, runServer } from '../lib/runner.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
 import { detectLang, setLang, t } from '../lib/i18n.mjs'
 import { applyAutostartAnswers, resolveExecStart, runAutostart } from '../lib/autostart.mjs'
 import { formatQuestion } from '../lib/ask.mjs'
+import { home, openStore } from '../lib/store.mjs'
 import { PROTO, VERSION } from '../lib/api.mjs'
 import { createInterface } from 'node:readline/promises'
 import { mkdirSync } from 'node:fs'
@@ -67,7 +68,7 @@ async function main (argv) {
         hasSudo: process.env.DSHNC_SUDO === '1',
       })
       applyAutostartAnswers(config, result)
-      saveConfig(config)
+      openStore().saveSettings({ name: config.name, aliases: config.aliases })
       out(t('auto.nodeSummary', { name: config.name })
         + (config.aliases?.length ? t('auto.aliasesSuffix', { aliases: config.aliases.join(', ') }) : ''))
     } finally {
@@ -83,9 +84,10 @@ async function main (argv) {
 
   if (command === 'workdir') {
     if (rest[0]) {
-      config.workdir = resolve(rest[0])
-      mkdirSync(config.workdir, { recursive: true })
-      saveConfig(config)
+      const dir = resolve(rest[0])
+      mkdirSync(dir, { recursive: true })
+      openStore().saveSettings({ workdir: dir })
+      config.workdir = dir
       out(t('workdir.set', { dir: config.workdir }))
     } else {
       out(config.workdir ?? t('workdir.none'))
@@ -96,12 +98,14 @@ async function main (argv) {
   if (command === 'status') {
     out(t('status.id', { id: config.id }))
     out(t('status.name', { name: config.name }))
-    const servers = Object.entries(config.servers ?? {})
+    const store = openStore()
+    const servers = store.servers()
     if (!servers.length) {
       out(t('status.none'))
       return 0
     }
-    for (const [url, state] of servers) {
+    for (const url of servers) {
+      const state = { ...store.readState(url), token: store.token(url) }
       out(t('status.server', {
         url,
         token: state.token ? t('status.token.yes') : t('status.token.no'),
@@ -123,14 +127,13 @@ async function main (argv) {
     const state = withCode
       ? await pairServer({ url, config, print: out })
       : await enrollServer({ url: normalizeUrl(url), config, print: out })
-    saveConfig(config)
     out(t('connect.done'))
     return state ? 0 : 1
   }
 
   if (command === 'daemon') {
     const urls = rest.filter((arg) => !arg.startsWith('--'))
-    const targets = urls.length ? urls.map(normalizeUrl) : Object.keys(config.servers ?? {})
+    const targets = urls.length ? urls.map(normalizeUrl) : openStore().servers()
     if (!targets.length) {
       process.stderr.write(t('err.nothingToServe') + '\n')
       return 2

@@ -18,7 +18,8 @@ import { Queue } from '../../dsh-nodes/lib/queue.mjs'
 import { createNodesServer } from '../../dsh-nodes/lib/server.mjs'
 import { handleAdmin } from '../../dsh-nodes/lib/admin-api.mjs'
 import { createPresence } from '../../dsh-nodes/lib/ws.mjs'
-import { loadConfig, serverState } from '../lib/config.mjs'
+import { loadConfig } from '../lib/config.mjs'
+import { openStore } from '../lib/store.mjs'
 import { pairServer, runServer } from '../lib/runner.mjs'
 import { setLang } from '../lib/i18n.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
@@ -69,6 +70,13 @@ after(() => {
 // функциями плагина с тем же store и queue, что и у поднятого сервера.
 const deps = () => ({ store, queue, config: NODES_CONFIG, prefix: '/dsh-nodes', origin: base.replace(/\/dsh-nodes$/, '') })
 
+/** Свежий снимок состояния сервера: демон пишет в sqlite, читаем заново. */
+function live (url) {
+  const store = openStore()
+  const state = store.readState(url)
+  return { ...state, token: store.token(url) }
+}
+
 async function admin (path, options = {}) {
   const method = options.method ?? 'GET'
   const body = options.body ? JSON.parse(options.body) : {}
@@ -90,7 +98,7 @@ test('ссылка из админки подключает клиента бе�
 
   const printed = []
   await pairServer({ url: link.body.url, config, print: (line) => printed.push(line) })
-  const state = serverState(config, base)
+  let state = live(base)
   assert.ok(state.token, 'токен должен сохраниться')
   assert.ok(state.node, 'номер узла должен сохраниться')
   assert.match(printed.join(' '), /connected: node 1/)
@@ -104,13 +112,13 @@ test('ссылка из админки подключает клиента бе�
 })
 
 test('после подключения клиент объявляет плагины и исполняет команду', async () => {
-  const state = serverState(config, base)
+  let state = live(base)
   const plugins = await loadPlugins({ dir: join(dir, 'plugins') })
   assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash'])
 
   const running = runServer({ url: base, config, print: () => {}, signal: controller.signal, pollIdleMs: 200, plugins })
 
-  for (let i = 0; i < 200 && !state.apiIds?.bash; i++) await new Promise((resolve) => setTimeout(resolve, 100))
+  for (let i = 0; i < 200 && !state.apiIds?.bash; i++) { await new Promise((resolve) => setTimeout(resolve, 100)); state = live(base) }
   assert.ok(state.apiIds?.bash, 'клиент должен объявить API')
   assert.equal(state.apiIds.bash, store.nodeApis(state.node)[0])
 

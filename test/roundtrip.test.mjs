@@ -17,7 +17,8 @@ import { Queue } from '../../dsh-nodes/lib/queue.mjs'
 import { createNodesServer } from '../../dsh-nodes/lib/server.mjs'
 import { handleAdmin } from '../../dsh-nodes/lib/admin-api.mjs'
 import { createPresence } from '../../dsh-nodes/lib/ws.mjs'
-import { loadConfig, serverState } from '../lib/config.mjs'
+import { loadConfig } from '../lib/config.mjs'
+import { openStore } from '../lib/store.mjs'
 import { setLang } from '../lib/i18n.mjs'
 import { runServer } from '../lib/runner.mjs'
 
@@ -69,6 +70,13 @@ after(() => {
 // функциями плагина с тем же store и queue, что и у поднятого сервера.
 const deps = () => ({ store, queue, config: NODES_CONFIG, prefix: '/dsh-nodes', origin: base.replace(/\/dsh-nodes$/, '') })
 
+/** Свежий снимок состояния сервера: демон пишет в sqlite, читаем заново. */
+function live (url) {
+  const store = openStore()
+  const state = store.readState(url)
+  return { ...state, token: store.token(url) }
+}
+
 async function admin (path, options = {}) {
   const method = options.method ?? 'GET'
   const body = options.body ? JSON.parse(options.body) : {}
@@ -107,9 +115,10 @@ test('клиент регистрируется сам, объявляет bash 
   assert.equal(approved.status, 200)
 
   // 3. ждём, пока клиент получит токен и объявит bash
-  const state = serverState(config, base)
+  let state = live(base)
   for (let i = 0; i < 200 && !state.apiIds?.bash; i++) {
     await new Promise((resolve) => setTimeout(resolve, 100))
+    state = live(base)
   }
   assert.ok(state.apiIds?.bash, `клиент не объявился; лог: ${lines.join(' | ')}`)
   assert.ok(state.token, 'токен не сохранён')
@@ -136,21 +145,22 @@ test('клиент регистрируется сам, объявляет bash 
   // 5. курсор клиента уехал на номер команды (клиент пишет его после ответа)
   for (let i = 0; i < 100 && state.cursor !== seq; i++) {
     await new Promise((resolve) => setTimeout(resolve, 50))
+    state = live(base)
   }
   assert.equal(state.cursor, seq)
 })
 
 test('состояние соединения сохраняется per URL', async () => {
-  const state = serverState(config, base)
+  let state = live(base)
   assert.ok(state.epoch, 'epoch должен быть сохранён')
   assert.ok(state.cursor >= 1, 'курсор должен пережить шаг цикла')
-  assert.ok(state.token, 'токен должен лежать в конфиге')
-  const other = serverState(config, 'http://127.0.0.1:1/other')
+  assert.ok(state.token, 'токен должен лежать в credentials')
+  const other = openStore().readState('http://127.0.0.1:1/other')
   assert.equal(other.cursor, null, 'у другого сервера своё состояние')
 })
 
 test('idle-цикл не завершается сам: демон должен жить', async () => {
-  const state = serverState(config, base)
+  let state = live(base)
   delete state.apiIds // без объявления, присутствия и работы — самый опасный случай
   const fresh = new AbortController()
   const running = runServer({ url: base, config, print: () => {}, signal: fresh.signal, pollIdleMs: 50 })
