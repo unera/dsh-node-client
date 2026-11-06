@@ -10,9 +10,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 
+import { WebSocketServer } from 'ws'
+
 import { Store } from '../../dsh-nodes/lib/db.mjs'
 import { Queue } from '../../dsh-nodes/lib/queue.mjs'
 import { createNodesServer } from '../../dsh-nodes/lib/server.mjs'
+import { createPresence } from '../../dsh-nodes/lib/ws.mjs'
 import { loadConfig, serverState } from '../lib/config.mjs'
 import { runServer } from '../lib/runner.mjs'
 
@@ -24,6 +27,7 @@ let server
 let base
 let config
 let controller
+let presence
 
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'dshnc-'))
@@ -31,13 +35,16 @@ before(async () => {
   store = new Store(join(dir, 'nodes.sqlite'))
   const epoch = store.bumpEpoch()
   queue = new Queue({ epoch, defaultTimeout: 5, maxBatch: 5, maxQueue: 100, commandTtl: 300 })
+  presence = createPresence({ WebSocketServer, prefix: '/dsh-nodes', store, queue })
   const handler = createNodesServer({
     store,
     queue,
     config: { routePrefix: '/dsh-nodes', maxBodyBytes: 65536, aliveTimeoutSeconds: 60, maxPendingEnroll: 50 },
     adminToken: ADMIN,
+    presence,
   })
   server = createServer((req, res) => handler.handle(req, res))
+  server.on('upgrade', (req, socket, head) => presence.upgrade(req, socket, head))
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   base = `http://127.0.0.1:${server.address().port}/dsh-nodes`
 
@@ -47,6 +54,7 @@ before(async () => {
 
 after(() => {
   controller?.abort()
+  presence?.close()
   server?.close()
   store?.close()
   rmSync(dir, { recursive: true, force: true })
@@ -69,7 +77,7 @@ test('клиент регистрируется сам, объявляет bash 
     config,
     print: (line) => lines.push(line),
     signal: controller.signal,
-    pollIdleMs: 50,
+    pollIdleMs: 10000, // намеренно долго: команду должен разбудить кадр state
   })
 
   // 2. ждём, пока заявка появится, и одобряем её как человек в админке
@@ -102,7 +110,12 @@ test('клиент регистрируется сам, объявляет bash 
     args: { command: 'printf "привет из bash\\n"' },
     timeout: 5,
   })
+  const started = Date.now()
   const outcome = await promise
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.ok(Date.now() - started < 5000, 'команда должна доехать по уведомлению, а не по опросу')
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.equal(presence.online(node.id), true, 'клиент должен держать WebSocket')
   assert.equal(outcome.status, 'ok', `команда не исполнилась: ${JSON.stringify(outcome)}; лог: ${lines.join(' | ')}`)
   assert.match(outcome.results[0].text, /привет из bash/)
 

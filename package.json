@@ -34,5 +34,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/unera/dsh-node-client.git"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0"
   }
 }
