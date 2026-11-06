@@ -20,6 +20,8 @@ import { applyAutostartAnswers, resolveExecStart, runAutostart } from '../lib/au
 import { formatQuestion } from '../lib/ask.mjs'
 import { PROTO, VERSION } from '../lib/api.mjs'
 import { createInterface } from 'node:readline/promises'
+import { mkdirSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 const HELP = () => [
   t('help.title', { home: home() }),
@@ -76,6 +78,18 @@ async function main (argv) {
 
   if (command === 'version' || command === '--version' || command === '-v') {
     out(t('version.line', { version: VERSION, proto: PROTO }))
+    return 0
+  }
+
+  if (command === 'workdir') {
+    if (args[0]) {
+      config.workdir = resolve(args[0])
+      mkdirSync(config.workdir, { recursive: true })
+      saveConfig(config)
+      out(t('workdir.set', { dir: config.workdir }))
+    } else {
+      out(config.workdir ?? t('workdir.none'))
+    }
     return 0
   }
 

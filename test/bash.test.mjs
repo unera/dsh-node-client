@@ -3,6 +3,9 @@
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { runBash } from '../lib/bash.mjs'
 import { setLang } from '../lib/i18n.mjs'
@@ -38,4 +41,27 @@ test('код возврата виден в последнем блоке', asyn
   assert.equal(result.ok, true)
   const meta = JSON.parse(result.results.at(-1).text)
   assert.equal(meta.code, 7)
+})
+
+test('каталог сессии создаётся под workdir и становится cwd', async () => {
+  const { sessionDir } = await import('../lib/bash.mjs')
+  const root = mkdtempSync(join(tmpdir(), 'dshnc-work-'))
+  const dir = sessionDir({ workdir: root, session: 'session-a7fd5961-4be0' })
+  assert.equal(dir, join(root, 'session-a7fd5961-4be0'))
+  assert.ok(existsSync(dir))
+  // опасные для имени символы заменяются
+  const weird = sessionDir({ workdir: root, session: '../evil/id' })
+  assert.equal(weird, join(root, '.._evil_id'))
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('плагин bash запускает команду в каталоге сессии', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'dshnc-work2-'))
+  const { handle } = await import('../lib/plugins/bash.mjs')
+  const outcome = await handle(
+    { method: 'exec', args: { command: 'pwd' } },
+    { workdir: root, session: 'sess-42' },
+  )
+  assert.match(outcome.results[0].text, /sess-42/)
+  rmSync(root, { recursive: true, force: true })
 })
