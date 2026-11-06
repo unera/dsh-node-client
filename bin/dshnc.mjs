@@ -15,6 +15,8 @@ import { loadConfig, normalizeUrl, saveConfig, home } from '../lib/config.mjs'
 import { enrollServer, pairServer, runServer } from '../lib/runner.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
 import { detectLang, setLang, t } from '../lib/i18n.mjs'
+import { applyAutostartAnswers, resolveExecStart, runAutostart } from '../lib/autostart.mjs'
+import { createInterface } from 'node:readline/promises'
 
 const HELP = () => [
   t('help.title', { home: home() }),
@@ -41,6 +43,30 @@ async function main (argv) {
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     out(HELP())
+    return 0
+  }
+
+  if (command === 'autostart') {
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    const ask = async (question, fallback) => {
+      const suffix = fallback ? ` [${fallback}]` : ''
+      const answer = await rl.question(`${question}${suffix}: `)
+      return answer.trim() || fallback || ''
+    }
+    try {
+      const result = await runAutostart({
+        ask,
+        print: out,
+        config,
+        execStart: resolveExecStart(process.argv[1]),
+        hasSudo: process.env.DSHNC_SUDO === '1',
+      })
+      applyAutostartAnswers(config, result)
+      saveConfig(config)
+      out(`узел: ${config.name}${config.aliases?.length ? ', алиасы: ' + config.aliases.join(', ') : ''}`)
+    } finally {
+      rl.close()
+    }
     return 0
   }
 
