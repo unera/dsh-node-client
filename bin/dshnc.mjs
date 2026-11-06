@@ -16,6 +16,7 @@ import { enrollServer, pairServer, runServer } from '../lib/runner.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
 import { detectLang, setLang, t } from '../lib/i18n.mjs'
 import { applyAutostartAnswers, resolveExecStart, runAutostart } from '../lib/autostart.mjs'
+import { formatQuestion } from '../lib/ask.mjs'
 import { createInterface } from 'node:readline/promises'
 
 const HELP = () => [
@@ -49,8 +50,7 @@ async function main (argv) {
   if (command === 'autostart') {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
     const ask = async (question, fallback) => {
-      const suffix = fallback ? ` [${fallback}]` : ''
-      const answer = await rl.question(`${question}${suffix}: `)
+      const answer = await rl.question(formatQuestion(question, fallback))
       return answer.trim() || fallback || ''
     }
     try {
