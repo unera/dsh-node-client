@@ -39,7 +39,7 @@ test('user-юнит внутри графической сессии импор�
   const text = renderUnit({ scope: 'user', execStart: '/usr/bin/dshnc', graphical: true })
   assert.match(text, /After=graphical-session\.target/)
   assert.match(text, /WantedBy=graphical-session\.target/)
-  assert.match(text, /ExecStartPre=-systemctl --user import-environment DISPLAY XAUTHORITY/)
+  assert.match(text, /ExecStartPre=-\/bin\/sh -c 'systemctl --user import-environment DISPLAY XAUTHORITY/)
 })
 
 test('системный юнит несёт User= и HOME=', () => {
@@ -191,4 +191,20 @@ test('без токена мастер не предлагает перенос,
   })
   assert.equal(result.copied, null)
   assert.ok(lines.some((line) => /connect <link>|connect <ссылк|connect <链接/.test(line)))
+})
+
+test('в юните есть PATH с каталогом node', () => {
+  const text = renderUnit({
+    scope: 'user',
+    execStart: '/opt/node/bin/node /opt/dshnc/bin/dshnc.mjs',
+    pathEnv: '/opt/node/bin:/usr/bin:/bin',
+  })
+  assert.match(text, /^Environment=PATH=\/opt\/node\/bin:\/usr\/bin:\/bin$/m)
+  assert.match(text, /^ExecStart=\/opt\/node\/bin\/node \/opt\/dshnc\/bin\/dshnc\.mjs daemon$/m)
+})
+
+test('импорт окружения не сыпет предупреждениями о незаданных переменных', () => {
+  const text = renderUnit({ scope: 'user', execStart: '/usr/bin/dshnc', graphical: true })
+  assert.match(text, /ExecStartPre=-\/bin\/sh -c 'systemctl --user import-environment/)
+  assert.match(text, /2>\/dev\/null \|\| true/)
 })
