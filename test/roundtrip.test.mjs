@@ -96,10 +96,10 @@ test('клиент регистрируется сам, объявляет bash 
 
   // 3. ждём, пока клиент получит токен и объявит bash
   const state = serverState(config, base)
-  for (let i = 0; i < 100 && !state.announced; i++) {
+  for (let i = 0; i < 100 && !state.apiIds?.bash; i++) {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  assert.ok(state.announced, `клиент не объявился; лог: ${lines.join(' | ')}`)
+  assert.ok(state.apiIds?.bash, `клиент не объявился; лог: ${lines.join(' | ')}`)
   assert.ok(state.token, 'токен не сохранён')
 
   // 4. ставим команду от лица сервера и ждём результата
@@ -139,7 +139,7 @@ test('состояние соединения сохраняется per URL', a
 
 test('idle-цикл не завершается сам: демон должен жить', async () => {
   const state = serverState(config, base)
-  state.announced = false // без присутствия и без работы — самый опасный случай
+  delete state.apiIds // без объявления, присутствия и работы — самый опасный случай
   const fresh = new AbortController()
   const running = runServer({ url: base, config, print: () => {}, signal: fresh.signal, pollIdleMs: 50 })
   const outcome = await Promise.race([
