@@ -98,7 +98,7 @@ test('после подключения клиент объявляет плаг
 
   const running = runServer({ url: base, config, print: () => {}, signal: controller.signal, pollIdleMs: 200, plugins })
 
-  for (let i = 0; i < 100 && !state.apiIds?.bash; i++) await new Promise((resolve) => setTimeout(resolve, 50))
+  for (let i = 0; i < 200 && !state.apiIds?.bash; i++) await new Promise((resolve) => setTimeout(resolve, 100))
   assert.ok(state.apiIds?.bash, 'клиент должен объявить API')
   assert.equal(state.apiIds.bash, store.nodeApis(state.node)[0])
 

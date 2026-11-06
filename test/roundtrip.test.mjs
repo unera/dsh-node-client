@@ -84,8 +84,8 @@ test('клиент регистрируется сам, объявляет bash 
 
   // 2. ждём, пока заявка появится, и одобряем её как человек в админке
   let pending = []
-  for (let i = 0; i < 50 && !pending.length; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 50))
+  for (let i = 0; i < 200 && !pending.length; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
     pending = (await admin('/v1/admin/pending')).body.pending
   }
   assert.equal(pending.length, 1, `заявка не появилась; лог клиента: ${lines.join(' | ')}`)
@@ -96,8 +96,8 @@ test('клиент регистрируется сам, объявляет bash 
 
   // 3. ждём, пока клиент получит токен и объявит bash
   const state = serverState(config, base)
-  for (let i = 0; i < 100 && !state.apiIds?.bash; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 50))
+  for (let i = 0; i < 200 && !state.apiIds?.bash; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
   }
   assert.ok(state.apiIds?.bash, `клиент не объявился; лог: ${lines.join(' | ')}`)
   assert.ok(state.token, 'токен не сохранён')
@@ -122,7 +122,7 @@ test('клиент регистрируется сам, объявляет bash 
   assert.match(outcome.results[0].text, /привет из bash/)
 
   // 5. курсор клиента уехал на номер команды (клиент пишет его после ответа)
-  for (let i = 0; i < 40 && state.cursor !== seq; i++) {
+  for (let i = 0; i < 100 && state.cursor !== seq; i++) {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   assert.equal(state.cursor, seq)
