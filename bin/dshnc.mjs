@@ -6,6 +6,7 @@
  *   dshnc connect <url>        заявка на сервере и ожидание одобрения
  *   dshnc daemon [url...]      держать соединения и исполнять команды
  *   dshnc status               что сохранено в ~/.dshnc
+ *   dshnc version              версия клиента и версия протокола
  *
  * Один клиент может работать с несколькими серверами: состояние соединений
  * (токен, курсор, epoch) хранится per URL.
@@ -17,6 +18,7 @@ import { loadPlugins } from '../lib/plugins/index.mjs'
 import { detectLang, setLang, t } from '../lib/i18n.mjs'
 import { applyAutostartAnswers, resolveExecStart, runAutostart } from '../lib/autostart.mjs'
 import { formatQuestion } from '../lib/ask.mjs'
+import { PROTO, VERSION } from '../lib/api.mjs'
 import { createInterface } from 'node:readline/promises'
 
 const HELP = () => [
@@ -29,6 +31,7 @@ const HELP = () => [
   '  ' + t('help.daemon3'),
   '  ' + t('help.foreground'),
   '  ' + t('help.status'),
+  '  ' + t('help.version'),
   '  ' + t('help.help'),
   '',
   '  ' + t('help.env'),
@@ -67,6 +70,11 @@ async function main (argv) {
     } finally {
       rl.close()
     }
+    return 0
+  }
+
+  if (command === 'version' || command === '--version' || command === '-v') {
+    out(t('version.line', { version: VERSION, proto: PROTO }))
     return 0
   }
 
@@ -120,6 +128,7 @@ async function main (argv) {
     process.on('SIGINT', stop)
     process.on('SIGTERM', stop)
     const plugins = await loadPlugins({ dir: join(home(), 'plugins'), log: (level, message) => out(message) })
+    out(t('version.line', { version: VERSION, proto: PROTO }))
     out(t('daemon.servers', { servers: targets.join(', ') }))
     out(t('daemon.plugins', { plugins: plugins.map((plugin) => plugin.api.name).join(', ') }))
     const shell = process.env.DSHNC_SHELL ?? '/bin/sh'
