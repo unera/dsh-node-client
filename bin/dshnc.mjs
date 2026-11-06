@@ -118,6 +118,12 @@ async function main (argv) {
       if (key === 'max') patch.max = value
       if (key === 'ask') patch.ask = value === 'true' || value === '1'
       if (key === 'roots') patch.roots = value.split(':').filter(Boolean)
+      if (key === 'base') patch.base = value
+      if (key === 'approver') patch.approver = value
+      if (key === 'tool') {
+        // внешний инструмент локального апрува: включаем канал и запоминаем команду
+        patch.ask = { local: { enabled: true, tool: { type: 'external', command: value } } }
+      }
       if (key === 'workdir') patch.workdir = resolve(value)
     }
     if (!Object.keys(patch).length) {

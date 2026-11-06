@@ -1,6 +1,6 @@
 {
   "name": "dsh-node-client",
-  "version": "0.0.30",
+  "version": "0.0.33",
   "description": "dshnc — клиент dsh-nodes: объявляет bash на машине узла и исполняет команды",
   "type": "module",
   "bin": {
@@ -18,7 +18,7 @@
     "README.md"
   ],
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test --test-concurrency=1 test/*.test.mjs"
   },
   "keywords": [
     "dsh",

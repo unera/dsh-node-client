@@ -137,3 +137,23 @@ test('правила на сервер перекрывают общие, пот
   const sandbox = sandboxFor(config, { sandbox: { mode: 'full' }, session: null }, null, 'https://b/dsh-nodes')
   assert.equal(sandbox.mode, 'ro')
 })
+
+test('base понижает обычную команду, но не подтверждённую', () => {
+  const config = { access: { base: 'rw', max: 'full', approver: 'local' } }
+  assert.equal(sandboxFor(config, { sandbox: { mode: 'full' } }, null, 'u').mode, 'rw', 'обычная — по base')
+  assert.equal(
+    sandboxFor(config, { sandbox: { mode: 'full' }, approved: 'id-1' }, null, 'u').mode,
+    'full',
+    'подтверждённую понижать нельзя',
+  )
+  // при approver: none base не применяется вовсе
+  const none = { access: { base: 'ro', max: 'full', approver: 'none' } }
+  assert.equal(sandboxFor(none, { sandbox: { mode: 'full' } }, null, 'u').mode, 'full')
+  // запрошенное уже base остаётся как есть
+  assert.equal(sandboxFor(config, { sandbox: { mode: 'ro' } }, null, 'u').mode, 'ro')
+})
+
+test('потолок узла режет даже подтверждённую команду', () => {
+  const config = { access: { base: 'rw', max: 'rw', approver: 'local' } }
+  assert.equal(sandboxFor(config, { sandbox: { mode: 'full' }, approved: 'id' }, null, 'u').mode, 'rw')
+})
