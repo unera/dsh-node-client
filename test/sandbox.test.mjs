@@ -86,6 +86,27 @@ test('каталог сессии: внутри roots можно, вне — no'
   rmSync(root, { recursive: true, force: true })
 })
 
+test('session.chdir не создаёт каталог, а mkdir создаёт', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dshnc-mk-'))
+  const work = join(root, 'work')
+  mkdirSync(work, { recursive: true })
+  const store = openStore({ dir: join(root, 'state') })
+  const sessions = createSessionStore(store)
+
+  // chdir в несуществующий — ошибка, а не тихое создание
+  assert.throws(() => sessions.chdir('s1', join(root, 'нет-такого'), { roots: [root] }), /нет/)
+  // mkdir создаёт, и после этого chdir работает
+  const made = sessions.mkdir('s1', join(root, 'проект'), { roots: [root], mode: 0o700 })
+  assert.equal(made.created, true)
+  const again = sessions.mkdir('s1', join(root, 'проект'), { roots: [root] })
+  assert.equal(again.created, false, 'повторный mkdir не падает')
+  sessions.chdir('s1', join(root, 'проект'), { roots: [root] })
+  assert.equal(sessions.cwd('s1', { workdir: work, roots: [root] }), join(root, 'проект'))
+  // за пределы корней mkdir нельзя
+  assert.throws(() => sessions.mkdir('s1', '/etc/нельзя', { roots: [root] }), /вне разрешённых/)
+  rmSync(root, { recursive: true, force: true })
+})
+
 test('session.chdir переключает каталог и запоминает его', () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-chdir-'))
   const work = join(root, 'work')
@@ -95,6 +116,7 @@ test('session.chdir переключает каталог и запоминае�
   const sessions = createSessionStore(store)
 
   assert.equal(sessions.cwd('s1', { workdir: work, roots: [root] }), join(work, 's1'))
+  sessions.mkdir('s1', other, { roots: [root] })
   const changed = sessions.chdir('s1', other, { roots: [root] })
   assert.equal(changed.dir, other)
   assert.equal(sessions.cwd('s1', { workdir: work, roots: [root] }), other, 'выбор должен сохраниться')
