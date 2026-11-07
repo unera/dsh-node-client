@@ -257,20 +257,8 @@ async function main (argv) {
     }
     process.on('SIGINT', stop)
     process.on('SIGTERM', stop)
-    // SIGHUP — перечитать конфиг без перезапуска: токены и соединения живут,
-    // меняются только правила. Традиция, и systemd это умеет через ExecReload.
-    process.on('SIGHUP', () => {
-      out(t('daemon.reload'))
-      try {
-        const fresh = openStore().settings ?? {}
-        // подменяем поля на месте: раннер держит ссылку на этот объект
-        for (const key of Object.keys(config)) delete config[key]
-        Object.assign(config, fresh)
-        config.reloadToken = Date.now()
-      } catch (error) {
-        process.stderr.write(t('err.writeState', { message: error.message }) + '\n')
-      }
-    })
+    // SIGHUP обрабатывает сам раннер: он же будит спящий цикл и переобъявляет
+    // API. Здесь ничего не делаем, чтобы не было двух источников правды.
     const plugins = await loadPlugins({ dir: join(home(), 'plugins'), log: (level, message) => out(message) })
     out(t('version.line', { version: VERSION, proto: PROTO }))
     out(t('daemon.servers', { servers: targets.join(', ') }))
