@@ -157,3 +157,19 @@ test('потолок узла режет даже подтверждённую �
   const config = { access: { base: 'rw', max: 'rw', approver: 'local' } }
   assert.equal(sandboxFor(config, { sandbox: { mode: 'full' }, approved: 'id' }, null, 'u').mode, 'rw')
 })
+
+test('«Permission denied» вне разрешённых каталогов — это отказ песочницы', () => {
+  const verdict = classify({
+    code: 1,
+    stderr: "touch: cannot touch '/root/abc.txt': Permission denied",
+    mode: 'rw',
+    enforcement: 'bwrap',
+  })
+  assert.equal(verdict.denied, true, 'иначе человеку не задаётся вопрос о расширении')
+  assert.equal(verdict.signature, 'permission denied')
+})
+
+test('в режиме full отказом не считается: там песочницы нет', () => {
+  const verdict = classify({ code: 1, stderr: 'Permission denied', mode: 'full' })
+  assert.equal(verdict.denied, false)
+})
