@@ -36,14 +36,52 @@ its timeout is killed. The `sandbox` block in the last result is the client's
 honest report: the mode it actually ran in, whether the kernel denied something
 and under which signature (`read-only file system` and the like).
 
-**`session`** — session state on the node, version 3.
+**`job`** — long-running processes.
+
+```
+start(command, cwd?, timeout?) → {id, status}
+output(id, offset?)            → {status, code, stdout, stderr, offset, sandbox}
+kill(id, signal?)              → SIGTERM to the whole process group
+list()                        → what runs and how it ended
+```
+
+A job runs through the same sandbox as `exec`: the mode that would confine a
+command confines its background process too. Output is kept in a ring (256 KiB)
+and read by absolute offsets; `sandbox` in the answer says whether isolation was
+applied. Jobs die with the daemon: sandboxed ones through `--die-with-parent`,
+the rest through `stopAll()` on SIGTERM.
+
+**`files`** — reading and writing without a shell.
+
+```
+read(path, offset?, limit?)                     → {text, version, size, truncated}
+write(path, content, ifVersion?, createDirs?)   → {version, bytes}
+edit(path, old, new, replaceAll?, ifVersion?)   → {version, replaced}
+list(path)                                      → {entries: [{name, type, size, mtime}]}
+stat(path)                                      → {exists, type, size, version}
+```
+
+Paths are checked against `roots` **before** touching the disk: `/etc/hostname`
+answers `path_denied`, not "read it anyway". Writes are atomic (temp file plus
+`rename`), and `ifVersion` turns a silent overwrite into a `stale` error.
+`edit` refuses ambiguity: a string found twice without `replaceAll` gives
+`ambiguous_edit`.
+
+**`session`** — session state on the node, version 4.
 
 ```
 chdir(path)              → move the session workdir inside the allowed roots
 mkdir(path, mode?)       → create a directory for the session
 cwd()                    → where the session currently is
 approve(id, text, mode)  → ask the human on this machine; returns ok/cancel
+ping()                   → {pong, sentAt, rttMs, upSeconds, platform, version}
 ```
+
+`ping` is the cheap liveness check: the node answers with its own clock and
+uptime, and the server fills `rttMs` and `clockSkewMs` — the node cannot time a
+round trip because it has never seen the server clock. It answers even on a node
+without a session store, and the server caps it at 15 seconds: a hung node must
+not hold the model for its full timeout.
 
 `approve` is deliberately not a shell command: it runs the tool configured in
 `ask.local.tool` (a `zenity` dialog, a script, anything), never goes through the
