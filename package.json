@@ -1,7 +1,7 @@
 {
   "name": "@dr-co/dsh-node-client",
-  "version": "0.0.60",
-  "description": "dshnc — клиент dsh-nodes: объявляет bash на машине узла и исполняет команды",
+  "version": "0.0.61",
+  "description": "Client for dsh-nodes: runs on a remote machine, declares its APIs and executes commands from a DSH session",
   "type": "module",
   "bin": {
     "dshnc": "./bin/dshnc.mjs"
@@ -22,10 +22,11 @@
   },
   "keywords": [
     "dsh",
-    "dshnc",
-    "node",
+    "deepseek-harness",
+    "dsh-plugin",
     "remote",
-    "agent"
+    "node",
+    "client"
   ],
   "license": "MIT",
   "engines": {
