@@ -54,6 +54,49 @@ async function main (argv) {
     return 0
   }
 
+  // Мастер настройки: меню, а не поток вопросов. Ведёт себя как «первичная
+  // настройка», но годится и для правок: текущие значения он предлагает по
+  // умолчанию, поэтому пустой ответ ничего не меняет.
+  if (command === 'onboard') {
+    const store = openStore()
+    const { runOnboard } = await import('../lib/onboard.mjs')
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    const ask = async (question) => {
+      const answer = await rl.question(question)
+      return answer
+    }
+    try {
+      await runOnboard({
+        ask,
+        print: (line) => out(line),
+        load: () => openStore().settings ?? {},
+        save: (patch) => openStore().saveSettings(patch),
+        autostart: async (cfg) => {
+          const answers = await runAutostart({
+            ask,
+            print: (line) => out(line),
+            config: cfg ?? {},
+            execStart: resolveExecStart(process.argv[1]),
+            hasSudo: process.env.DSHNC_SUDO === '1',
+          })
+          applyAutostartAnswers(cfg ?? {}, answers)
+        },
+        status: (cfg) => {
+          const policy = cfg?.policy ?? {}
+          return [
+            `узел: ${cfg?.name ?? '—'}`,
+            `каталоги: ${(cfg?.roots ?? []).join(', ') || '—'}`,
+            `режимы: base ${policy.base ?? '—'}, потолок ${policy.max ?? '—'}, вопросы ${policy.approver ?? '—'}`,
+            `связь: опрос ${cfg?.pollIdleMs ?? 0} мс, пинг ${cfg?.pingInterval ?? 0} с`,
+          ]
+        },
+      })
+    } finally {
+      rl.close()
+    }
+    return 0
+  }
+
   if (command === 'autostart') {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
     const ask = async (question, fallback) => {
