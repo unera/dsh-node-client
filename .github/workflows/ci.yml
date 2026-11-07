@@ -16,6 +16,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      # часть тестов ходит в соседний репозиторий плагина (общий протокол)
+      - uses: actions/checkout@v4
+        with:
+          repository: unera/dsh-nodes
+          path: .nodes-sibling
+      - run: ln -s "$PWD/.nodes-sibling" ../dsh-nodes
+      - run: npm install --no-audit --no-fund --prefix .nodes-sibling
       - run: npm install --no-audit --no-fund
       - name: тесты
         run: npm test
