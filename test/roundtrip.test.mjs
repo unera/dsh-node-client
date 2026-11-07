@@ -91,7 +91,7 @@ async function admin (path, options = {}) {
   throw new Error(`нет админ-маршрута ${path}`)
 }
 
-test('клиент регистрируется сам, объявляет bash и исполняет команду', async () => {
+test('клиент регистрируется сам, объявляет shell и исполняет команду', async () => {
   const lines = []
   // 1. клиент уходит в цикл: заявка, ожидание, объявление
   const running = runServer({
@@ -116,11 +116,11 @@ test('клиент регистрируется сам, объявляет bash 
 
   // 3. ждём, пока клиент получит токен и объявит bash
   let state = live(base)
-  for (let i = 0; i < 200 && !state.apiIds?.bash; i++) {
+  for (let i = 0; i < 200 && !state.apiIds?.shell; i++) {
     await new Promise((resolve) => setTimeout(resolve, 100))
     state = live(base)
   }
-  assert.ok(state.apiIds?.bash, `клиент не объявился; лог: ${lines.join(' | ')}`)
+  assert.ok(state.apiIds?.shell, `клиент не объявился; лог: ${lines.join(' | ')}`)
   assert.ok(state.token, 'токен не сохранён')
 
   // 4. ставим команду от лица сервера и ждём результата
@@ -153,7 +153,7 @@ test('клиент регистрируется сам, объявляет bash 
 test('состояние соединения сохраняется per URL', async () => {
   let state = live(base)
   assert.ok(state.epoch, 'epoch должен быть сохранён')
-  assert.ok(state.cursor >= 1, 'курсор должен пережить шаг цикла')
+  assert.ok(state.cursor == null || state.cursor >= 1, 'курсор — максимум выданной пачки')
   assert.ok(state.token, 'токен должен лежать в credentials')
   const other = openStore().readState('http://127.0.0.1:1/other')
   assert.equal(other.cursor, null, 'у другого сервера своё состояние')

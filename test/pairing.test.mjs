@@ -114,14 +114,13 @@ test('ссылка из админки подключает клиента бе�
 test('после подключения клиент объявляет плагины и исполняет команду', async () => {
   let state = live(base)
   const plugins = await loadPlugins({ dir: join(dir, 'plugins') })
-  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['shell', 'bash', 'job', 'session'])
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['shell', 'job', 'session'])
 
   const running = runServer({ url: base, config, print: () => {}, signal: controller.signal, pollIdleMs: 200, plugins })
 
   for (let i = 0; i < 200 && !state.apiIds?.shell; i++) { await new Promise((resolve) => setTimeout(resolve, 100)); state = live(base) }
   assert.ok(state.apiIds?.shell, 'клиент должен объявить API')
-  assert.ok(state.apiIds?.bash, 'старое имя остаётся алиасом')
-  assert.notEqual(state.apiIds.shell, state.apiIds.bash, 'это два разных API')
+  assert.ok(state.apiIds?.job, 'фоновые процессы объявляются отдельным API')
 
   const node = store.node(state.node)
   const apiId = state.apiIds.shell

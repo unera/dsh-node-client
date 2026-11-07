@@ -55,9 +55,9 @@ test('каталог сессии создаётся под workdir и стан�
   rmSync(root, { recursive: true, force: true })
 })
 
-test('плагин bash запускает команду в каталоге сессии', async () => {
+test('плагин shell запускает команду в каталоге сессии', async () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-work2-'))
-  const { handle } = await import('../lib/plugins/bash.mjs')
+  const { handle } = await import('../lib/plugins/shell.mjs')
   const { createSessionStore } = await import('../lib/sessions.mjs')
   const { openStore } = await import('../lib/store.mjs')
   const sessions = createSessionStore(openStore({ dir: root }))
@@ -87,7 +87,7 @@ test('опасный идентификатор сессии отвергает�
 
 test('плагин честно отказывает, если каталог сессии не сделать', async () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-work4-'))
-  const { handle } = await import('../lib/plugins/bash.mjs')
+  const { handle } = await import('../lib/plugins/shell.mjs')
   const { createSessionStore } = await import('../lib/sessions.mjs')
   const { openStore } = await import('../lib/store.mjs')
   const sessions = createSessionStore(openStore({ dir: join(root, 'state') }))
