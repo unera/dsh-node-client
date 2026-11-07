@@ -33,7 +33,7 @@ test('ответы меняют значения, approver=local спрашив�
   const patch = await askAccess({ ask, config: {}, policy: {}, url: 'https://x' })
   assert.equal(patch.name, 'ноут2')
   assert.deepEqual(patch.aliases, ['a', 'b'])
-  assert.deepEqual(patch.roots, ['/work', '/tmp'])
+  assert.deepEqual(patch.policy['https://x'].roots, ['/work', '/tmp'])
   assert.equal(patch.policy['https://x'].max, 'full')
   assert.equal(patch.policy['https://x'].approver, 'local')
   assert.equal(patch.policy['https://x'].ask.local.tool.command, 'zenity --text-info')
