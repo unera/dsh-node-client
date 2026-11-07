@@ -14,6 +14,7 @@
 import { join } from 'node:path'
 import { loadConfig, normalizeUrl } from '../lib/config.mjs'
 import { enrollServer, pairServer, runServer } from '../lib/runner.mjs'
+import * as jobPlugin from '../lib/plugins/job.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
 import { detectLang, setLang, t } from '../lib/i18n.mjs'
 import { applyAutostartAnswers, resolveExecStart, runAutostart } from '../lib/autostart.mjs'
@@ -247,6 +248,11 @@ async function main (argv) {
     const controller = new AbortController()
     const stop = () => {
       out(t('daemon.stopping'))
+      // фоновые процессы умирают вместе с демоном: иначе после остановки
+      // сервиса на машине остаются работать задания, о которых никто не знает
+      try {
+        jobPlugin.stopAll()
+      } catch {}
       controller.abort()
     }
     process.on('SIGINT', stop)
