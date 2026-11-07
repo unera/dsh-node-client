@@ -208,3 +208,9 @@ test('импорт окружения не сыпет предупреждени
   assert.match(text, /ExecStartPre=-\/bin\/sh -c 'systemctl --user import-environment/)
   assert.match(text, /2>\/dev\/null \|\| true/)
 })
+
+test('юнит умеет reload через SIGHUP', async () => {
+  const { renderUnit } = await import('../lib/autostart.mjs')
+  const text = renderUnit({ scope: 'user', execStart: '/usr/bin/dshnc', args: ['daemon'], graphical: false })
+  assert.match(text, /ExecReload=\/bin\/kill -HUP \$MAINPID/)
+})
