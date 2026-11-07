@@ -10,7 +10,7 @@ libraries.
 ## Install
 
 ```sh
-npm install -g unera/dsh-node-client
+npm install -g @dr-co/dsh-node-client
 systemctl --user restart dshnc
 ```
 
@@ -238,6 +238,21 @@ on this machine — not cosmetics.
 
 `dshnc config key=value` changes top-level settings, `dshnc policy <url> key=value`
 changes per-server rules; both edit the file in place and keep its comments.
+
+## Install
+
+```
+npm install -g @dr-co/dsh-node-client
+```
+
+The same thing straight from git, without npm:
+
+```
+npm install -g unera/dsh-node-client
+```
+
+Both give you the `dshnc` binary. The git form follows `main`, the npm form gives
+you a tagged release — pick npm for a node that has to keep working.
 
 ## Commands
 

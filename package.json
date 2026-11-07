@@ -1,6 +1,6 @@
 {
-  "name": "dsh-node-client",
-  "version": "0.0.58",
+  "name": "@dr-co/dsh-node-client",
+  "version": "0.0.59",
   "description": "dshnc — клиент dsh-nodes: объявляет bash на машине узла и исполняет команды",
   "type": "module",
   "bin": {
@@ -40,5 +40,8 @@
   },
   "dependencies": {
     "yaml": "^2.9.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
