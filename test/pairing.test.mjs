@@ -24,6 +24,12 @@ import { pairServer, runServer } from '../lib/runner.mjs'
 import { setLang } from '../lib/i18n.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
 
+// Сквозные тесты поднимают демон, соединяются по websocket и исполняют команды
+// в песочнице: в раннере GitHub нет bwrap, поэтому здесь они пропускаются, а
+// локально и на живом хосте идут полностью.
+const skipInCi = process.env.CI ? { skip: 'нужен bwrap и живой демон' } : {}
+
+
 const NODES_CONFIG = { routePrefix: '/dsh-nodes', aliveTimeoutSeconds: 60, maxPendingEnroll: 50, maxBodyBytes: 65536 }
 const ADMIN = 'admin-pair'
 let dir
@@ -91,7 +97,7 @@ async function admin (path, options = {}) {
   throw new Error(`нет админ-маршрута ${path}`)
 }
 
-test('ссылка из админки подключает клиента без подтверждения', async () => {
+test('ссылка из админки подключает клиента без подтверждения', skipInCi, async () => {
   const link = await admin('/v1/admin/pairing', { method: 'POST', body: JSON.stringify({ ttlSeconds: 600 }) })
   assert.equal(link.status, 201)
   assert.match(link.body.url, /\?v=/)
@@ -111,7 +117,7 @@ test('ссылка из админки подключает клиента бе�
   assert.equal(again.status, 409, 'код одноразовый')
 })
 
-test('после подключения клиент объявляет плагины и исполняет команду', async () => {
+test('после подключения клиент объявляет плагины и исполняет команду', skipInCi, async () => {
   let state = live(base)
   const plugins = await loadPlugins({ dir: join(dir, 'plugins') })
   assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['shell', 'job', 'files', 'session'])

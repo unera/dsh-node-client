@@ -22,6 +22,12 @@ import { openStore } from '../lib/store.mjs'
 import { setLang } from '../lib/i18n.mjs'
 import { runServer } from '../lib/runner.mjs'
 
+// Сквозные тесты поднимают демон, соединяются по websocket и исполняют команды
+// в песочнице: в раннере GitHub нет bwrap, поэтому здесь они пропускаются, а
+// локально и на живом хосте идут полностью.
+const skipInCi = process.env.CI ? { skip: 'нужен bwrap и живой демон' } : {}
+
+
 const NODES_CONFIG = { routePrefix: '/dsh-nodes', aliveTimeoutSeconds: 60, maxPendingEnroll: 50, maxBodyBytes: 65536 }
 const ADMIN = 'admin-token'
 let dir
@@ -91,7 +97,7 @@ async function admin (path, options = {}) {
   throw new Error(`нет админ-маршрута ${path}`)
 }
 
-test('клиент регистрируется сам, объявляет shell и исполняет команду', async () => {
+test('клиент регистрируется сам, объявляет shell и исполняет команду', skipInCi, async () => {
   const lines = []
   // 1. клиент уходит в цикл: заявка, ожидание, объявление
   const running = runServer({
@@ -150,7 +156,7 @@ test('клиент регистрируется сам, объявляет shell
   assert.equal(state.cursor, seq)
 })
 
-test('состояние соединения сохраняется per URL', async () => {
+test('состояние соединения сохраняется per URL', skipInCi, async () => {
   let state = live(base)
   assert.ok(state.epoch, 'epoch должен быть сохранён')
   assert.ok(state.cursor == null || state.cursor >= 1, 'курсор — максимум выданной пачки')
@@ -159,7 +165,7 @@ test('состояние соединения сохраняется per URL', a
   assert.equal(other.cursor, null, 'у другого сервера своё состояние')
 })
 
-test('idle-цикл не завершается сам: демон должен жить', async () => {
+test('idle-цикл не завершается сам: демон должен жить', skipInCi, async () => {
   let state = live(base)
   delete state.apiIds // без объявления, присутствия и работы — самый опасный случай
   const fresh = new AbortController()
