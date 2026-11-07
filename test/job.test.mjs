@@ -2,7 +2,9 @@
  * Фоновые процессы: запуск, чтение по смещению, убийство группы.
  */
 import assert from 'node:assert/strict'
-import { readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { createJobRegistry } from '../lib/jobs.mjs'
@@ -74,4 +76,21 @@ test('список показывает живое и завершённое', a
   assert.equal(list.length, 1)
   assert.equal(list[0].id, id)
   assert.equal(list[0].status, 'completed')
+})
+
+test('задание в песочнице: запись вне roots отвергается ядром', async () => {
+  const { profileArgs, probe } = await import('../lib/sandbox.mjs')
+  const roots = [mkdtempSync(join(tmpdir(), 'dshnc-job-sandbox-'))]
+  if (!probe().available) return  // без bwrap проверять нечего
+  const sandbox = { mode: 'rw', args: profileArgs({ mode: 'rw', writable: roots, workdir: roots[0] }), probe }
+  const jobs = createJobRegistry()
+  const id = text(jobs.start({
+    command: 'echo можно > внутри.txt && echo нельзя > /tmp/снаружи.txt',
+    cwd: roots[0],
+    sandbox,
+  })).id
+  await new Promise((resolve) => setTimeout(resolve, 700))
+  const out = text(jobs.output(id))
+  assert.equal(out.sandbox, 'bwrap', 'задание должно идти через песочницу')
+  assert.ok(out.code !== 0, `запись вне roots должна сорваться, а код ${out.code}`)
 })
