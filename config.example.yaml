@@ -15,7 +15,10 @@ max: rw              # абсолютный потолок: ro | rw | full
 base: rw             # режим старта; подтверждённую команду не понижает
 approver: local      # local | server | none
 maxConcurrent: 5     # сколько процессов одновременно
-approvalTtlSeconds: 86400
+approvalTtlSeconds: 86400     # сколько живёт вопрос в очереди узла
+approvalWaitSeconds: 600      # сколько модель ждёт ответа; 0 — до отмены вызова
+pingInterval: 15              # пинг по сокету, с; 0 — выключить
+maxPingIntervalFactor: 10     # растяжение пинга без работы, раз; 0 — не растягивать
 
 # Каналы вопросов.
 ask:

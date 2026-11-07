@@ -40,11 +40,21 @@ test('ответы меняют значения, approver=local спрашив�
   assert.ok(asked.some((question) => /Команда вопроса/.test(question)))
 })
 
-test('связь: нули означают «выключено»', async () => {
+test('связь: пустой ответ сохраняет прежнее, ноль остаётся нулём', async () => {
   const { ask } = asker(['', '', ''])
-  const patch = await askConnection({ ask, config: { pollIdleMs: 0, pingInterval: 15 } })
+  const patch = await askConnection({ ask, print: () => {}, config: { pollIdleMs: 0, pingInterval: 0, maxPingIntervalFactor: 0 } })
+  assert.equal(patch.pollIdleMs, 0, 'ноль — это выбор, а не «не задано»')
+  assert.equal(patch.pingInterval, 0)
+  assert.equal(patch.maxPingIntervalFactor, 0)
+})
+
+test('связь: в новом конфиге предлагаются 15 с и растяжение 10', async () => {
+  const asked = []
+  const ask = async (question) => { asked.push(question); return '' }
+  const patch = await askConnection({ ask, print: () => {}, config: {} })
+  assert.equal(patch.pingInterval, 15)
+  assert.equal(patch.maxPingIntervalFactor, 10)
   assert.equal(patch.pollIdleMs, 0)
-  assert.equal(patch.pingInterval, 15, 'пустой ответ сохраняет прежнее значение')
 })
 
 test('меню: правка не записывается без согласия', async () => {
