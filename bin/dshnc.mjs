@@ -34,6 +34,12 @@ const HELP = () => [
   '  ' + t('help.daemon2'),
   '  ' + t('help.daemon3'),
   '  ' + t('help.foreground'),
+  '  ' + t('help.onboard'),
+  '  ' + t('help.config'),
+  '  ' + t('help.policy'),
+  '  ' + t('help.audit'),
+  '  ' + t('help.workdir'),
+  '  ' + t('help.autostart'),
   '  ' + t('help.status'),
   '  ' + t('help.version'),
   '  ' + t('help.help'),
@@ -59,7 +65,7 @@ async function main (argv) {
   // умолчанию, поэтому пустой ответ ничего не меняет.
   if (command === 'onboard') {
     const store = openStore()
-    const { runOnboard } = await import('../lib/onboard.mjs')
+    const { runOnboard, pickPolicy } = await import('../lib/onboard.mjs')
     const rl = createInterface({ input: process.stdin, output: process.stdout })
     const ask = async (question) => {
       const answer = await rl.question(question)
@@ -82,10 +88,11 @@ async function main (argv) {
           applyAutostartAnswers(cfg ?? {}, answers)
         },
         status: (cfg) => {
-          const policy = cfg?.policy ?? {}
+          const { url, policy } = pickPolicy(cfg ?? {})
           return [
             `узел: ${cfg?.name ?? '—'}`,
-            `каталоги: ${(cfg?.roots ?? []).join(', ') || '—'}`,
+            `сервер: ${url ?? 'не подключён'}`,
+            `каталоги: ${(policy.roots ?? cfg?.roots ?? []).join(', ') || '—'}`,
             `режимы: base ${policy.base ?? '—'}, потолок ${policy.max ?? '—'}, вопросы ${policy.approver ?? '—'}`,
             `связь: опрос ${cfg?.pollIdleMs ?? 0} мс, пинг ${cfg?.pingInterval ?? 0} с`,
           ]

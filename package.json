@@ -1,6 +1,6 @@
 {
   "name": "dsh-node-client",
-  "version": "0.0.53",
+  "version": "0.0.54",
   "description": "dshnc — клиент dsh-nodes: объявляет bash на машине узла и исполняет команды",
   "type": "module",
   "bin": {
