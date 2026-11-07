@@ -251,6 +251,23 @@ The same thing straight from git, without npm:
 npm install -g unera/dsh-node-client
 ```
 
+### Upgrading from the unscoped package
+
+The package used to be published as `dsh-node-client`, without a scope. Both names
+install the same `dshnc` binary, and npm refuses to overwrite it:
+
+```
+npm error EEXIST: file already exists
+npm error path .../bin/dshnc
+```
+
+Remove the old package first — that is all the conflict is about:
+
+```
+npm uninstall -g dsh-node-client
+npm install -g @dr-co/dsh-node-client
+```
+
 Both give you the `dshnc` binary. The git form follows `main`, the npm form gives
 you a tagged release — pick npm for a node that has to keep working.
 
