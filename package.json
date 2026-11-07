@@ -1,6 +1,6 @@
 {
   "name": "@dr-co/dsh-node-client",
-  "version": "0.0.61",
+  "version": "0.0.62",
   "description": "Client for dsh-nodes: runs on a remote machine, declares its APIs and executes commands from a DSH session",
   "type": "module",
   "bin": {
@@ -36,11 +36,9 @@
     "type": "git",
     "url": "git+https://github.com/unera/dsh-node-client.git"
   },
-  "devDependencies": {
-    "ws": "^8.18.0"
-  },
   "dependencies": {
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "ws": "^8.18.0"
   },
   "publishConfig": {
     "access": "public"
