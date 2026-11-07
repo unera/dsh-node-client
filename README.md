@@ -210,6 +210,24 @@ protocol changes: the server already passes arbitrary schemas through.
 Not implemented yet. When it is, the section will say so plainly instead of
 describing intentions.
 
+## First-run setup
+
+`dshnc onboard` is a menu-driven wizard: it asks one section at a time and
+explains what each answer means, because the answers are policy — who may do what
+on this machine — not cosmetics.
+
+- current values are shown in brackets and an empty answer keeps them, so the
+  wizard never silently changes a node that already works;
+- `доступ` — name, session directory, allowed directories, ceiling (`ro`/`rw`/
+  `full`), starting mode, who answers questions, and the command used to ask
+  (any tool that exits 0 on "yes", not just `zenity`);
+- `связь` — periodic polling, socket ping interval and how far it may stretch;
+- `автозапуск` — delegates to the systemd unit wizard;
+- before writing, it prints the resulting config and asks for confirmation.
+
+`dshnc config key=value` changes top-level settings, `dshnc policy <url> key=value`
+changes per-server rules; both edit the file in place and keep its comments.
+
 ## Commands
 
 | command | what it does |
