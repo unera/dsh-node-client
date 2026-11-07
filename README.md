@@ -83,6 +83,17 @@ round trip because it has never seen the server clock. It answers even on a node
 without a session store, and the server caps it at 15 seconds: a hung node must
 not hold the model for its full timeout.
 
+The tool is started with these variables, so a dialog can show what is being
+asked and remember a standing answer:
+
+| variable | meaning |
+|---|---|
+| `DSHNC_APPROVAL_ID` | id of this question |
+| `DSHNC_APPROVAL_MODE` | mode that is being requested |
+| `DSHNC_SESSION` | model session; "answer yes until the end of this session" |
+| `DSHNC_QUESTION` | root call of the turn; "until the end of this question" |
+| `DSHNC_CALL` | the exact call, for logs |
+
 `approve` is deliberately not a shell command: it runs the tool configured in
 `ask.local.tool` (a `zenity` dialog, a script, anything), never goes through the
 sandbox, and cannot be denied by the kernel. Without a configured tool it fails

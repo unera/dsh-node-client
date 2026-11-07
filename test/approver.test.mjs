@@ -71,3 +71,17 @@ test('без %s текст уходит на stdin, а не в командну�
   rmSync(file, { force: true })
 })
 
+
+test('в окружение вопроса едут сессия и номер вопроса', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dshnc-envs-'))
+  const script = join(dir, 'approver.sh')
+  const out = join(dir, 'seen.txt')
+  writeFileSync(script, `#!/bin/sh\nprintf '%s|%s|%s' "$DSHNC_SESSION" "$DSHNC_QUESTION" "$DSHNC_CALL" > ${out}\nexit 0\n`)
+  await askLocally({
+    tool: `sh ${script}`,
+    prompt: 'x',
+    payload: { id: 'i', mode: 'rw', session: 'session-abc', question: { rootCallId: 'call-1', callId: 'call-2' } },
+  })
+  assert.equal(readFileSync(out, 'utf8').trim(), 'session-abc|call-1|call-2')
+  rmSync(dir, { recursive: true, force: true })
+})
