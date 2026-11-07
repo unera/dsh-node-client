@@ -42,12 +42,12 @@ test('отказ распознаётся по сигнатуре, код воз
   assert.equal(classify({ code: 1, stderr: 'Read-only file system', mode: 'full' }).denied, false)
 })
 
-test('bwrap на этой машине работает', () => {
+test('bwrap на этой машине работает', process.env.CI ? { skip: 'в раннере GitHub нет прав на user namespaces' } : {}, () => {
   const result = probe()
   assert.equal(result.available, true, `bwrap не работает: ${result.reason ?? ''}`)
 })
 
-test('песочница реально не даёт писать вне workdir', async () => {
+test('песочница реально не даёт писать вне workdir', process.env.CI ? { skip: 'нужен bwrap' } : {}, async () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-sb-'))
   const work = join(root, 'work')
   mkdirSync(work, { recursive: true })
