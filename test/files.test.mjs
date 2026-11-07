@@ -77,3 +77,33 @@ test('list и stat', async () => {
   assert.equal(missing.exists, false)
   cleanup()
 })
+
+test('куски: сборка через .inprogress и переименование последним куском', async () => {
+  const { root, ctx, cleanup } = sandbox()
+  const target = join(root, 'big.bin')
+  const source = Buffer.from([0, 1, 2, 250, 251, 252, 13, 10, 65])
+  writeFileSync(join(root, 'src.bin'), source)
+
+  const size = 4
+  let offset = 0
+  for (;;) {
+    const chunk = payload(await files.handle({ method: 'readChunk', args: { path: join(root, 'src.bin'), offset, size } }, ctx))
+    const last = chunk.eof
+    const written = payload(await files.handle({
+      method: 'writeChunk',
+      args: { path: target, offset, data: chunk.data, final: last },
+    }, ctx))
+    offset += chunk.size
+    if (last) {
+      assert.equal(written.complete, true)
+      break
+    }
+  }
+  assert.deepEqual(readFileSync(target), source, 'байты должны совпасть побайтно')
+  assert.throws(() => readFileSync(`${target}.inprogress`), 'временный файл должен исчезнуть')
+
+  const hash = payload(await files.handle({ method: 'sha256', args: { path: target } }, ctx))
+  assert.equal(hash.size, source.length)
+  assert.match(hash.sha256, /^[0-9a-f]{64}$/)
+  cleanup()
+})
