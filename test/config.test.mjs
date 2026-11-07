@@ -60,3 +60,17 @@ test('без конфига клиент стартует с умолчания�
   store.close?.()
   cleanup()
 })
+
+test('настройки верхнего уровня меняются командой, а не правкой файла', async () => {
+  const { execFileSync } = await import('node:child_process')
+  const { dir, cleanup } = fresh()
+  writeFileSync(join(dir, 'config.yaml'), '# мой комментарий\nname: nbw\npollIdleMs: 5000\n')
+  execFileSync(process.execPath, ['bin/dshnc.mjs', 'config', 'pollIdleMs=0'], {
+    env: { ...process.env, DSHNC_HOME: dir },
+    cwd: new URL('..', import.meta.url).pathname,
+  })
+  const text = readFileSync(join(dir, 'config.yaml'), 'utf8')
+  assert.match(text, /# мой комментарий/, 'комментарии не должны пострадать')
+  assert.match(text, /pollIdleMs: 0/)
+  cleanup()
+})

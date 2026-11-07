@@ -148,6 +148,43 @@ async function main (argv) {
     return 0
   }
 
+  // Настройки верхнего уровня: то, что относится к самому клиенту, а не к
+  // конкретному серверу. Нужны, чтобы менять поведение без правки файла руками
+  // (и без риска сломать YAML-комментарии).
+  if (command === 'config') {
+    const store = openStore()
+    const pairs = rest
+    if (!pairs.length) {
+      const plain = { ...config }
+      delete plain.servers
+      delete plain.policy
+      out(JSON.stringify(plain, null, 2))
+      return 0
+    }
+    const patch = {}
+    for (const pair of pairs) {
+      const at = pair.indexOf('=')
+      if (at < 0) continue
+      const key = pair.slice(0, at)
+      const raw = pair.slice(at + 1)
+      if (!key || raw === '') continue
+      const value = /^-?\d+(\.\d+)?$/.test(raw) ? Number(raw) : raw === 'true' ? true : raw === 'false' ? false : raw
+      patch[key] = value
+    }
+    if (!Object.keys(patch).length) {
+      out(t('config.usage'))
+      return 1
+    }
+    try {
+      store.saveSettings(patch)
+    } catch (error) {
+      process.stderr.write(t('err.writeState', { message: error.message }) + '\n')
+      return 1
+    }
+    out(t('config.saved', { patch: JSON.stringify(patch) }))
+    return 0
+  }
+
   if (command === 'audit') {
     const limit = Number(rest[0]) > 0 ? Number(rest[0]) : 20
     const rows = openStore().readAudit(limit)
