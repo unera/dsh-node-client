@@ -16,7 +16,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 
 test('встроенный bash грузится всегда и первым', async () => {
   const plugins = await loadPlugins({ dir })
-  assert.equal(plugins[0].api.name, 'bash')
+  assert.equal(plugins[0].api.name, 'shell', 'первым идёт shell: bash остался алиасом')
   assert.equal(plugins[0].api.methods[0].method, 'exec')
   assert.equal(plugins[0].builtin, true)
 })
@@ -35,8 +35,8 @@ export async function handle (command) {
 }
 `)
   const plugins = await loadPlugins({ dir: home })
-  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash', 'session', 'echo'])
-  assert.deepEqual(apisOf(plugins).map((entry) => entry.name), ['bash', 'session', 'echo'])
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['shell', 'bash', 'job', 'session', 'echo'])
+  assert.deepEqual(apisOf(plugins).map((entry) => entry.name), ['shell', 'bash', 'job', 'session', 'echo'])
 
   const plugin = resolvePlugin(plugins, { api: 99, method: 'say' }, {})
   assert.equal(plugin.api.name, 'echo')
@@ -50,15 +50,16 @@ test('сломанный плагин не уносит остальные', asy
   writeFileSync(join(home, 'bad', 'index.mjs'), 'export const api = { name: "bad" }')
   const warnings = []
   const plugins = await loadPlugins({ dir: home, log: (level, message) => warnings.push(message) })
-  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash', 'session'])
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['shell', 'bash', 'job', 'session'])
   assert.match(warnings.join(' '), /bad/)
 })
 
 test('resolvePlugin сначала по номеру API, потом по методу', async () => {
   const plugins = await loadPlugins({ dir })
-  const byId = resolvePlugin(plugins, { api: 7, method: 'exec' }, { bash: 7 })
-  assert.equal(byId.api.name, 'bash')
-  const byMethod = resolvePlugin(plugins, { api: 404, method: 'exec' }, { bash: 7 })
-  assert.equal(byMethod.api.name, 'bash')
+  const byId = resolvePlugin(plugins, { api: 7, method: 'exec' }, { shell: 7 })
+  assert.equal(byId.api.name, 'shell', 'по номеру API — тот, кто его держит')
+  // номер неизвестен, метод `exec` есть у двух плагинов: берём первый, shell
+  const byMethod = resolvePlugin(plugins, { api: 404, method: 'exec' }, { shell: 7 })
+  assert.equal(byMethod.api.name, 'shell')
   assert.equal(resolvePlugin(plugins, { api: 404, method: 'nope' }, {}), null)
 })

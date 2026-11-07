@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { parse as parseYaml } from 'yaml'
 
 import { openStore } from '../lib/store.mjs'
 
@@ -20,7 +21,7 @@ test('настройки, токен и рантайм лежат в разны�
   store.writeState(URL_A, { cursor: 7, epoch: 3, apiIds: { bash: 2 } })
   store.close()
 
-  const config = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'))
+  const config = parseYaml(readFileSync(join(dir, 'config.yaml'), 'utf8'))
   assert.equal(config.workdir, '/home/u/work')
   assert.equal(config.servers, undefined, 'в настройках не должно быть серверов')
   assert.equal(config.token, undefined)
@@ -56,7 +57,7 @@ test('токены разных серверов не мешают друг др
 
 test('старый config.json с серверами переезжает по местам', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-store3-'))
-  writeFileSync(join(dir, 'config.json'), JSON.stringify({
+  writeFileSync(join(dir, 'config.yaml'), JSON.stringify({
     id: 'x',
     name: 'old',
     servers: { [URL_A]: { token: 'legacy-token', cursor: 4, epoch: 2, node: 9, alias: 'old-node', apiIds: { bash: 7 } } },
@@ -68,7 +69,7 @@ test('старый config.json с серверами переезжает по �
   assert.equal(state.node, 9)
   assert.deepEqual(state.apiIds, { bash: 7 })
   assert.equal(store.settings.name, 'old', 'настройки остались')
-  const config = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'))
+  const config = parseYaml(readFileSync(join(dir, 'config.yaml'), 'utf8'))
   assert.equal(config.servers, undefined, 'из настроек серверы убраны')
   store.close()
   rmSync(dir, { recursive: true, force: true })

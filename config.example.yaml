@@ -1,0 +1,49 @@
+# Пример конфига dshnc. Копируется в ~/.dshnc/config.yaml (0600).
+# Старый config.json читается как есть: YAML надмножество JSON, но правки через
+# `dshnc policy` переписывают файл, теряя комментарии — поэтому лучше сразу YAML.
+
+# Имя узла. Алиасы (или имя по умолчанию) видны в каталоге сервера.
+name: nbw
+aliases: [ноутбук, laptop]
+
+# Каталог сессий: здесь клиент заводит рабочие каталоги для моделей.
+workdir: /home/unera/work/ai/.dsh
+
+# Общие правила для всех серверов; policy[url] переопределяет по одному.
+roots: [/home/unera/work/ai]
+max: rw              # абсолютный потолок: ro | rw | full
+base: rw             # режим старта; подтверждённую команду не понижает
+approver: local      # local | server | none
+maxConcurrent: 5     # сколько процессов одновременно
+approvalTtlSeconds: 86400
+
+# Каналы вопросов.
+ask:
+  # Вопрос человеку за этой машиной. `%s` подставляет текст в аргумент,
+  # без `%s` текст уходит на stdin (так работает zenity --text-info).
+  local:
+    enabled: true
+    tool:
+      type: external
+      command: zenity --text-info --width=700 --height=400 --title=dsh-nodes
+  # Ответ через DSH: клиент в этом канале не участвует, решает сервер.
+  web:
+    enabled: true
+
+# Правила для конкретного сервера: то, что важнее общего.
+policy:
+  "https://dsh.uvw.ru/dsh-nodes":
+    max: full
+    base: rw
+    approver: local
+
+# MCP-серверы (пока не реализовано, см. README). Имя в конфиге становится
+# именем API узла: mcp-files, mcp-git.
+mcp:
+  - name: files
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/unera/work"]
+  - name: git
+    transport: http
+    url: http://127.0.0.1:8842/mcp

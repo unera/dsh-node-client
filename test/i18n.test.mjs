@@ -51,7 +51,7 @@ test('подстановка переменных и запасной англи
 })
 
 test('описания API тоже локализованы', async () => {
-  const { api } = await import('../lib/plugins/bash.mjs')
+  const { api } = await import('../lib/plugins/shell.mjs')
   setLang('en')
   assert.match(api().description, /Shell/)
   setLang('ru')

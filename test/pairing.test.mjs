@@ -114,16 +114,17 @@ test('ссылка из админки подключает клиента бе�
 test('после подключения клиент объявляет плагины и исполняет команду', async () => {
   let state = live(base)
   const plugins = await loadPlugins({ dir: join(dir, 'plugins') })
-  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['bash', 'session'])
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['shell', 'bash', 'job', 'session'])
 
   const running = runServer({ url: base, config, print: () => {}, signal: controller.signal, pollIdleMs: 200, plugins })
 
-  for (let i = 0; i < 200 && !state.apiIds?.bash; i++) { await new Promise((resolve) => setTimeout(resolve, 100)); state = live(base) }
-  assert.ok(state.apiIds?.bash, 'клиент должен объявить API')
-  assert.equal(state.apiIds.bash, store.nodeApis(state.node)[0])
+  for (let i = 0; i < 200 && !state.apiIds?.shell; i++) { await new Promise((resolve) => setTimeout(resolve, 100)); state = live(base) }
+  assert.ok(state.apiIds?.shell, 'клиент должен объявить API')
+  assert.ok(state.apiIds?.bash, 'старое имя остаётся алиасом')
+  assert.notEqual(state.apiIds.shell, state.apiIds.bash, 'это два разных API')
 
   const node = store.node(state.node)
-  const apiId = store.nodeApis(node.id)[0]
+  const apiId = state.apiIds.shell
   const { promise } = queue.enqueue({ nodeId: node.id, api: apiId, method: 'exec', args: { command: 'echo pairing-ok' }, timeout: 5 })
   const outcome = await promise
   assert.equal(outcome.status, 'ok')
