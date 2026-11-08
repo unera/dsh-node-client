@@ -120,7 +120,7 @@ test('ссылка из админки подключает клиента бе�
 test('после подключения клиент объявляет плагины и исполняет команду', skipInCi, async () => {
   let state = live(base)
   const plugins = await loadPlugins({ dir: join(dir, 'plugins') })
-  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['shell', 'job', 'files', 'session'])
+  assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['shell', 'job', 'files', 'transfer', 'session'])
 
   const running = runServer({ url: base, config, print: () => {}, signal: controller.signal, pollIdleMs: 200, plugins })
 
