@@ -20,6 +20,7 @@ import { detectLang, setLang, t } from '../lib/i18n.mjs'
 import { applyAutostartAnswers, resolveExecStart, runAutostart } from '../lib/autostart.mjs'
 import { formatQuestion } from '../lib/ask.mjs'
 import { home, openStore } from '../lib/store.mjs'
+import * as api from '../lib/api.mjs'
 import { PROTO, VERSION } from '../lib/api.mjs'
 import { createInterface } from 'node:readline/promises'
 import { mkdirSync } from 'node:fs'
@@ -63,6 +64,59 @@ async function main (argv) {
   // Мастер настройки: меню, а не поток вопросов. Ведёт себя как «первичная
   // настройка», но годится и для правок: текущие значения он предлагает по
   // умолчанию, поэтому пустой ответ ничего не меняет.
+  // Событие устройства: кнопка в уведомлении, готовность, что угодно.
+  // Обязательны только сессия и текст — остальное по желанию.
+  if (command === 'send-session') {
+    const args = process.argv.slice(3)
+    const readFlag = (name) => {
+      const index = args.indexOf(name)
+      if (index < 0) return null
+      const value = args[index + 1]
+      args.splice(index, value === undefined ? 1 : 2)
+      return value ?? null
+    }
+    const session = readFlag('--session')
+    const button = readFlag('--button')
+    const purpose = readFlag('--purpose')
+    const eventId = readFlag('--id') ?? `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const text = args.filter((item) => !item.startsWith('--')).join(' ').trim()
+    if (!session) {
+      out('нужен номер сессии: --session <id>. Номер видно в админке или в ссылке на сессию.')
+      return 1
+    }
+    if (!text) {
+      out('нужен текст события: например dshnc send-session --session <id> "перезагрузи dsh"')
+      return 1
+    }
+    const store = openStore()
+    const settings = store.settings ?? {}
+    const servers = Object.keys(settings.policy ?? {})
+    const base = servers[0]
+    if (!base) {
+      out('нет сохранённого сервера: сначала dshnc connect <ссылка>')
+      return 1
+    }
+    const token = store.token(base)
+    if (!token) {
+      out('нет токена для этого сервера: подключись заново')
+      return 1
+    }
+    try {
+      const answer = await api.sendEvent(base, token, { session, text, button, purpose, id: eventId })
+      out(`отправлено в сессию ${answer.session ?? session} (устройство: ${answer.device ?? 'это'})`)
+      return 0
+    } catch (error) {
+      // коды переводим в человеческую речь: 404 и 403 человек должен понять сразу
+      const map = {
+        404: `сессии ${session} больше нет: возможно, её удалили или закрыли`,
+        403: 'для этого устройства события выключены в админке',
+        400: 'сервер не принял событие: проверь номер сессии и текст',
+      }
+      out(map[error.status] ?? (error.message || 'сервер не ответил'))
+      return 1
+    }
+  }
+
   if (command === 'onboard') {
     const store = openStore()
     const { runOnboard, pickPolicy } = await import('../lib/onboard.mjs')
