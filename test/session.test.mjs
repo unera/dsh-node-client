@@ -19,3 +19,20 @@ test('session.ping объявлен в API и версия контракта п
   // версия API = версия клиента: разные платформы не сталкиваются по ключу
   assert.match(api.version, /^desktop-\d+\.\d+\.\d+$/, 'версия API должна быть версией клиента')
 })
+
+test('session.id отдаёт номер сессии, в которой пришла команда', async () => {
+  const session = await import('../lib/plugins/session.mjs')
+  const answer = await session.handle(
+    { method: 'id', args: {}, session: 'session-a7fd5961-4be0-4120-a7e6-a4f3507cac11' },
+    {},
+  )
+  const payload = JSON.parse(answer.results[0].text)
+  assert.equal(payload.session, 'session-a7fd5961-4be0-4120-a7e6-a4f3507cac11')
+})
+
+test('session.id без сессии возвращает null, а не выдумку', async () => {
+  const session = await import('../lib/plugins/session.mjs')
+  const answer = await session.handle({ method: 'id', args: {} }, {})
+  const payload = JSON.parse(answer.results[0].text)
+  assert.equal(payload.session, null)
+})
