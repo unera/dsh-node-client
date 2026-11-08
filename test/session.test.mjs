@@ -9,7 +9,7 @@ test('session.ping отвечает ok даже без хранилища сес
   const payload = JSON.parse(answer.results[0].text)
   assert.equal(typeof payload.pong, 'number')
   assert.equal(payload.platform, process.platform)
-  assert.match(payload.version, /^dshnc\//)
+  assert.match(payload.version, /^desktop-\d+\.\d+\.\d+$/)
 })
 
 test('session.ping объявлен в API и версия контракта поднята', async () => {
