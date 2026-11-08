@@ -112,7 +112,8 @@ async function main (argv) {
         403: 'для этого устройства события выключены в админке',
         400: 'сервер не принял событие: проверь номер сессии и текст',
       }
-      out(map[error.status] ?? (error.message || 'сервер не ответил'))
+      // сервер присылает причину своими словами — она важнее нашей заготовки
+      out(error.message && !/^HTTP \d+$/.test(error.message) ? error.message : (map[error.status] ?? 'сервер не ответил'))
       return 1
     }
   }
