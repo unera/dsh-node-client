@@ -75,7 +75,12 @@ async function main (argv) {
       args.splice(index, value === undefined ? 1 : 2)
       return value ?? null
     }
-    const session = readFlag('--session')
+    const rawSession = readFlag('--session')
+    // DSH зовёт сессии `session-<uuid>`; человек знает только uuid, поэтому
+    // префикс добавляем сами, а если он уже есть — не трогаем
+    const session = rawSession && /^[0-9a-f-]{36}$/i.test(rawSession.trim())
+      ? `session-${rawSession.trim()}`
+      : rawSession
     const button = readFlag('--button')
     const purpose = readFlag('--purpose')
     const eventId = readFlag('--id') ?? `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
