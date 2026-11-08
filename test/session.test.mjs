@@ -16,5 +16,6 @@ test('session.ping объявлен в API и версия контракта п
   const session = await import('../lib/plugins/session.mjs')
   const api = session.api()
   assert.ok(api.methods.some((method) => method.method === 'ping'))
-  assert.equal(api.version, '4', 'новый метод — новая версия контракта')
+  // версия API = версия клиента: разные платформы не сталкиваются по ключу
+  assert.match(api.version, /^desktop-\d+\.\d+\.\d+$/, 'версия API должна быть версией клиента')
 })
