@@ -9,13 +9,16 @@ test('аргументы пайпа: нужны команда и путь на 
   assert.throws(() => pipeArgs({ command: 'ls' }, 'to'), /hostPath/)
 })
 
-test('таймаут: секунды и миллисекунды, с потолком', () => {
-  assert.equal(pipeArgs({ command: 'x', hostPath: '/y' }, 'from').timeoutMs, PIPE_LIMITS.timeoutMs.default)
+test('таймаут: по умолчанию нет, заданный не урезается', () => {
+  // без ограничения: бэкап может идти долго, и потолок тут только мешает
+  assert.equal(pipeArgs({ command: 'x', hostPath: '/y' }, 'from').timeoutMs, 0)
   assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: 5 }, 'from').timeoutMs, 5000)
   assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeoutMs: 7000 }, 'from').timeoutMs, 7000)
-  // больше потолка — урезаем, меньше секунды — поднимаем: иначе смысла нет
-  assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: 99_999 }, 'from').timeoutMs, PIPE_LIMITS.timeoutMs.max)
-  assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: 0.1 }, 'from').timeoutMs, 1000)
+  // сутки — законное значение, ничего не режем
+  assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: 86_400 }, 'from').timeoutMs, 86_400_000)
+  // ноль и отрицательное — без ограничения
+  assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: 0 }, 'from').timeoutMs, 0)
+  assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: -1 }, 'from').timeoutMs, 0)
 })
 
 test('успех: код 0 — файл годен, даже если вывод пустой', () => {
