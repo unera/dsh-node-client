@@ -34,3 +34,11 @@ test('разрыв сокета не превращается в опрос: к�
     'после разрыва цикл должен проснуться и открыть присутствие заново')
   assert.ok(!/falling back to polling/.test(source))
 })
+
+test('описания передачи файлов совпадают с поведением', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../lib/i18n.mjs', import.meta.url), 'utf8')
+  // copyToDevice — на устройство (хост → узел), copyFromDevice — с устройства
+  assert.match(source, /'files\.copyToDevice\.description': '[^']*(?:host to this node|с хоста на этот узел|从主机复制文件到本节点)/)
+  assert.match(source, /'files\.copyFromDevice\.description': '[^']*(?:this node to the host|с этого узла на хост|从本节点复制文件到主机)/)
+})
