@@ -25,3 +25,12 @@ test('hello несёт номер соединения', async () => {
   const source = readFileSync(new URL('../lib/presence.mjs', import.meta.url), 'utf8')
   assert.match(source, /conn: conn \?\? null/, 'в кадре hello должно быть поле conn')
 })
+
+test('разрыв сокета не превращается в опрос: клиент переподключается', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
+  // при закрытии канала presence обнуляется и цикл будится заново
+  assert.match(source, /presence = null[\s\S]{0,200}setTimeout\(nudge, 1000\)/,
+    'после разрыва цикл должен проснуться и открыть присутствие заново')
+  assert.ok(!/falling back to polling/.test(source))
+})
