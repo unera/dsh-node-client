@@ -204,3 +204,20 @@ test('401 without JSON does not wipe the node token', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('restart is declared once: null in hello and in the first check_state, then numbers', async () => {
+  await withNode({
+    commands: [{ seq: 1, api: 1, method: 'exec', args: {}, timeout: 10, sandbox: { mode: 'rw' } }],
+  }, async (fake) => {
+    assert.ok(await waitFor(() => fake.calls.results.length > 0), 'the client must execute the command')
+    const hello = fake.calls.frames.find((frame) => frame.t === 'hello')
+    assert.ok(hello, 'hello must be sent')
+    assert.equal(hello.known, null, 'a fresh process declares the restart in hello')
+
+    const checks = fake.calls.frames.filter((frame) => frame.t === 'check_state')
+    assert.equal(checks[0]?.known, null, 'the first wait frame repeats the declaration — the server reacts to it, not to hello')
+    const nulls = checks.filter((frame) => frame.known === null)
+    assert.equal(nulls.length, 1, `exactly one null frame is allowed, got ${nulls.length}: ${JSON.stringify(checks.map((c) => c.known))}`)
+    assert.ok(checks.slice(1).every((frame) => typeof frame.known === 'number'), 'every later frame carries a number')
+  })
+})
