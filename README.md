@@ -192,10 +192,11 @@ not fill the disk with a log nobody reads.
 
 ## Control channel
 
-Polling pulls batches over HTTP; a WebSocket (`/v1/ws`, token in the
-subprotocol, never in the URL) tells the client that work exists, so it does not
-wait for the next poll. Without the socket the client still works, just with
-poll latency.
+Batches are pulled over HTTP; a WebSocket (`/v1/ws`, token in the subprotocol,
+never in the URL) tells the client that work exists. There is no polling: the
+client sleeps until a `state` frame arrives. The frames are exactly two —
+`{t:'state', epoch, max_commandno}` ("I am waiting", my generation, my own last
+executed number) and `{t:'ping', no}`. There is no handshake and no cursor.
 
 Batches run in parallel with a cap (`maxConcurrent`, default 5): one model turn
 can produce a dozen calls, and a node must not be flooded. `session.chdir` is
@@ -282,7 +283,7 @@ you a tagged release — pick npm for a node that has to keep working.
 | `dshnc audit [n]` | commands executed without the sandbox |
 | `dshnc workdir [path]` | show or set the session working directory |
 
-One client serves several servers: token, cursor and epoch are kept **per URL**.
+One client serves several servers: token, epoch and the connection counter are kept **per URL**.
 
 ## Development
 

@@ -18,7 +18,7 @@ test('settings, token and runtime live in different files', () => {
   const store = openStore({ dir })
   store.saveSettings({ name: 'nbw', aliases: ['ноут'], workdir: '/home/u/work' })
   store.setToken(URL_A, 'token-a')
-  store.writeState(URL_A, { cursor: 7, epoch: 3, apiIds: { bash: 2 } })
+  store.writeState(URL_A, { epoch: 3, apiIds: { bash: 2 } })
   store.close()
 
   const config = parseYaml(readFileSync(join(dir, 'config.yaml'), 'utf8'))
@@ -32,7 +32,7 @@ test('settings, token and runtime live in different files', () => {
 
   const again = openStore({ dir })
   assert.equal(again.token(URL_A), 'token-a')
-  assert.equal(again.readState(URL_A).cursor, 7)
+  assert.equal(again.readState(URL_A).epoch, 3)
   assert.deepEqual(again.readState(URL_A).apiIds, { bash: 2 })
   again.close()
   rmSync(dir, { recursive: true, force: true })
@@ -43,8 +43,8 @@ test('tokens of different servers do not get in each other way', () => {
   const store = openStore({ dir })
   store.setToken(URL_A, 'token-a')
   store.setToken(URL_B, 'token-b')
-  store.writeState(URL_A, { cursor: 1 })
-  store.writeState(URL_B, { cursor: 2 })
+  store.writeState(URL_A, { epoch: 1 })
+  store.writeState(URL_B, { epoch: 2 })
   assert.equal(store.token(URL_A), 'token-a')
   assert.equal(store.token(URL_B), 'token-b')
   assert.deepEqual(store.servers().sort(), [URL_A, URL_B].sort())
@@ -60,12 +60,12 @@ test('an old config.json with servers migrates into its places', () => {
   writeFileSync(join(dir, 'config.yaml'), JSON.stringify({
     id: 'x',
     name: 'old',
-    servers: { [URL_A]: { token: 'legacy-token', cursor: 4, epoch: 2, node: 9, alias: 'old-node', apiIds: { bash: 7 } } },
+    servers: { [URL_A]: { token: 'legacy-token', epoch: 2, node: 9, alias: 'old-node', apiIds: { bash: 7 } } },
   }))
   const store = openStore({ dir })
   assert.equal(store.token(URL_A), 'legacy-token', 'токен переехал в credentials')
   const state = store.readState(URL_A)
-  assert.equal(state.cursor, 4)
+  assert.equal(state.epoch, 2)
   assert.equal(state.node, 9)
   assert.deepEqual(state.apiIds, { bash: 7 })
   assert.equal(store.settings.name, 'old', 'настройки остались')

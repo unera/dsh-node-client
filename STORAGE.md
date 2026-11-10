@@ -8,7 +8,7 @@
 |---|---|---|
 | `config.json` | только человеческие настройки: `id`, `name`, `aliases`, `workdir` | CLI и демон (через хранилище) |
 | `credentials.yaml` | токены узлов, режим `0600` | тот, кто подключает узел |
-| `state.sqlite` | рантайм: `cursor`, `epoch`, `boot`, `node`, `alias`, `api_ids` | только демон |
+| `state.sqlite` | рантайм: `epoch`, `boot`, `node`, `alias`, `api_ids` | только демон |
 
 ## Схема `state.sqlite` меняется только цепочкой миграций
 
