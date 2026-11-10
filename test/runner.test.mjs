@@ -227,3 +227,11 @@ test('клиент принимает номер, который назвал с
   assert.equal(adoptMaxCommandno(5, undefined), 5, 'мусор в поле ничего не ломает')
   assert.equal(adoptMaxCommandno(5, 'нет'), 5)
 })
+
+test('drain барьера считается как «все, кроме себя» — проверка на живом контексте', async () => {
+  const { readFileSync } = await import('node:fs')
+  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
+  // ловушка, на которой узел встал живьём: drain без reserve ждёт сам себя
+  assert.match(runner, /drain: \(\) => pool\.whenIdle\(1\)/, 'барьер обязан исключать свой слот')
+  assert.equal(/drain: \(\) => pool\.whenIdle\(\)/.test(runner), false, 'drain без reserve вешает узел')
+})
