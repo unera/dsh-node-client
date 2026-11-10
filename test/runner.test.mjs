@@ -195,3 +195,35 @@ test('подписка ставится до вопроса о состояни�
   // сразу, поэтому слушатель обязан быть готов раньше вопроса
   assert.ok(sleepingAt < askAt, 'сначала подписка, потом check_state — иначе ответ упадёт в пустоту')
 })
+
+test('барьер не ждёт сам себя и не отвечает раньше работы', async () => {
+  const { createPool } = await import('../lib/runner.mjs')
+
+  // пул 1: барьер один — ждать нечего, отвечает сразу
+  const solo = createPool({ slots: 1, run: async (command) => { if (command.method === '#F') await solo.whenIdle(1) } })
+  const started = Date.now()
+  await Promise.race([solo.submit({ seq: 1, method: '#F' }), new Promise((r) => setTimeout(r, 1000))])
+  assert.ok(Date.now() - started < 500, 'барьер не должен ждать самого себя')
+
+  // пул 2: барьер обязан пропустить вперёд долгую работу и дождаться её
+  const order = []
+  const pool = createPool({ slots: 2, run: async (command) => {
+    if (command.method === '#F') { await pool.whenIdle(1); order.push('flush') }
+    else { await new Promise((r) => setTimeout(r, 200)); order.push('exec') }
+  } })
+  pool.submit({ seq: 1, method: 'exec' })
+  pool.submit({ seq: 2, method: '#F' })
+  await pool.whenIdle()
+  assert.deepEqual(order, ['exec', 'flush'], 'барьер отвечает только после работы до него')
+})
+
+test('клиент принимает номер, который назвал сервер — так закрываются дырки', async () => {
+  const { adoptMaxCommandno } = await import('../lib/runner.mjs')
+  // сервер выдал 1..4 и сжёг 5 на отменённую команду: максимум по полученным — 4,
+  // но сервер называет 5, и клиент обязан это принять
+  assert.equal(adoptMaxCommandno(4, 5), 5)
+  assert.equal(adoptMaxCommandno(57, 54), 57, 'назад номер не едет: приоритетная отмена приходит раньше низких')
+  assert.equal(adoptMaxCommandno(null, 5), 5, 'первый ответ тоже принимается')
+  assert.equal(adoptMaxCommandno(5, undefined), 5, 'мусор в поле ничего не ломает')
+  assert.equal(adoptMaxCommandno(5, 'нет'), 5)
+})
