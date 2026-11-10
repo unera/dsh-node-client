@@ -17,23 +17,25 @@ import { Queue } from '../../dsh-nodes/lib/queue.mjs'
 import { createNodesServer } from '../../dsh-nodes/lib/server.mjs'
 import { handleAdmin } from '../../dsh-nodes/lib/admin-api.mjs'
 import { createPresence } from '../../dsh-nodes/lib/ws.mjs'
+import * as serverPresence from '../../dsh-nodes/lib/ws.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { openStore } from '../lib/store.mjs'
 import { setLang } from '../lib/i18n.mjs'
-import { runServer } from '../lib/runner.mjs'
+import { pairServer, runServer } from '../lib/runner.mjs'
 
 // End-to-end tests bring up the daemon, connect over websocket and execute commands
 // inside the sandbox: the GitHub runner has no bwrap, so here they are skipped, while
 // locally and on a live host they run in full.
 //
-// They are also skipped while the server still speaks the old protocol: main answers
-// `hello-ok` and reacts to `check_state`, while this client sends `state` frames and
-// `epoch`/`client_epoch` — the server ignores them, so the loop never gets a wake and
-// the command never arrives. Re-enable these three tests together with the server-side
-// epoch change.
-const skipInCi = process.env.CI
+// The other reason to skip is the server side: these checks need the epoch protocol. A
+// server that still waits for `check_state` ignores our `state` frames, so the loop never
+// wakes and the test hangs instead of failing. The presence module of an epoch server
+// exports the close codes it uses — that is the capability the client relies on, so it is
+// what decides whether the check can run at all.
+const EPOCH_SERVER = typeof serverPresence.CLOSE_EPOCH === 'number'
+const skip = process.env.CI
   ? { skip: 'нужен bwrap и живой демон' }
-  : { skip: 'the dsh-nodes server on main still speaks hello/check_state, not state/epoch' }
+  : (EPOCH_SERVER ? {} : { skip: 'the dsh-nodes server here still speaks hello/check_state, not state/epoch' })
 
 
 const NODES_CONFIG = { routePrefix: '/dsh-nodes', aliveTimeoutSeconds: 60, maxPendingEnroll: 50, maxBodyBytes: 65536 }
@@ -54,6 +56,9 @@ before(async () => {
   const epoch = store.bumpEpoch()
   queue = new Queue({ epoch, defaultTimeout: 5, maxBatch: 5, maxQueue: 100, commandTtl: 300 })
   presence = createPresence({ WebSocketServer, prefix: '/dsh-nodes', store, queue })
+  // the server wakes a waiting node from `enqueue`: without this wiring the delivery of a
+  // command depends on the race between the test and the client's next poll
+  queue.setNotify?.((nodeId) => presence.notify(nodeId))
   const handler = createNodesServer({
     store,
     queue,
@@ -105,7 +110,7 @@ async function admin (path, options = {}) {
   throw new Error(`нет админ-маршрута ${path}`)
 }
 
-test('the client registers itself, announces shell and executes a command', skipInCi, async () => {
+test('the client registers itself, announces shell and executes a command', skip, async () => {
   const lines = []
   // 1. the client goes into the loop: application, waiting, announcement
   const running = runServer({
@@ -165,7 +170,7 @@ test('the client registers itself, announces shell and executes a command', skip
   assert.ok(state.epoch, 'epoch должен быть сохранён')
 })
 
-test('connection state is kept per URL', skipInCi, async () => {
+test('connection state is kept per URL', skip, async () => {
   const state = live(base)
   assert.ok(state.epoch, 'epoch должен быть сохранён')
   assert.ok(state.token, 'токен должен лежать в credentials')
@@ -173,15 +178,39 @@ test('connection state is kept per URL', skipInCi, async () => {
   assert.equal(other.epoch, null, 'у другого сервера своё состояние')
 })
 
-test('the idle loop does not end by itself: the daemon must live', skipInCi, async () => {
-  let state = live(base)
-  delete state.apiIds // без объявления, присутствия и работы — самый опасный случай
-  const fresh = new AbortController()
-  const running = runServer({ url: base, config, print: () => {}, signal: fresh.signal, pollIdleMs: 50 })
-  const outcome = await Promise.race([
-    running.then((value) => ({ ended: true, value })),
-    new Promise((resolve) => setTimeout(() => resolve({ ended: false }), 400)),
-  ])
-  fresh.abort()
-  assert.equal(outcome.ended, false, 'runServer вышел сам — процесс-демон умрёт на простое')
+test('the idle loop does not end by itself: the daemon must live', skip, async () => {
+  // Its own server and its own node: a second client on the node already in use is
+  // displaced with `4001 replaced` by design, and the displaced instance exits — by
+  // mistake that would end this very process instead of testing idleness.
+  const idleStore = new Store(join(dir, 'nodes-idle.sqlite'))
+  const idleQueue = new Queue({ epoch: idleStore.bumpEpoch(), defaultTimeout: 5 })
+  const idlePresence = createPresence({ WebSocketServer, prefix: '/dsh-nodes', store: idleStore, queue: idleQueue })
+  idleQueue.setNotify?.((nodeId) => idlePresence.notify(nodeId))
+  const idleHandler = createNodesServer({ store: idleStore, queue: idleQueue, config: NODES_CONFIG, adminToken: ADMIN, presence: idlePresence })
+  const idleHttp = createServer((req, res) => idleHandler.handle(req, res))
+  idleHttp.on('upgrade', (req, socket, head) => idlePresence.upgrade(req, socket, head))
+  await new Promise((resolve) => idleHttp.listen(0, '127.0.0.1', resolve))
+  const idleBase = `http://127.0.0.1:${idleHttp.address().port}/dsh-nodes`
+  try {
+    const idleDeps = () => ({ store: idleStore, queue: idleQueue, config: NODES_CONFIG, prefix: '/dsh-nodes', origin: idleBase.replace(/\/dsh-nodes$/, '') })
+    const link = await handleAdmin(idleDeps(), 'POST', '/pairing', { ttlSeconds: 600 })
+    assert.equal(link.status, 201, 'пара без ссылки не выдаст токен')
+    await pairServer({ url: link.body.url, config, print: () => {} })
+
+    // no announcement, no presence new, no work: the most dangerous case for a daemon
+    const fresh = new AbortController()
+    const running = runServer({ url: idleBase, config, print: () => {}, signal: fresh.signal })
+    const outcome = await Promise.race([
+      running.then(() => ({ ended: true })),
+      new Promise((resolve) => setTimeout(() => resolve({ ended: false }), 600)),
+    ])
+    fresh.abort()
+    await running.catch(() => {})
+    assert.equal(outcome.ended, false, 'runServer вышел сам — процесс-демон умрёт на простое')
+  } finally {
+    idlePresence.close()
+    idleHttp.closeAllConnections?.()
+    await new Promise((resolve) => idleHttp.close(() => resolve()))
+    idleStore.close()
+  }
 })
