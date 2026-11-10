@@ -97,6 +97,15 @@ async function admin (path, options = {}) {
   throw new Error(`нет админ-маршрута ${path}`)
 }
 
+/** Подключить клиента по ссылке: без этого дальнейшие проверки не о чем. */
+async function ensurePaired () {
+  if (live(base).token) return
+  const link = await admin('/v1/admin/pairing', { method: 'POST', body: JSON.stringify({ ttlSeconds: 600 }) })
+  assert.equal(link.status, 201)
+  await pairServer({ url: link.body.url, config, print: () => {} })
+  assert.ok(live(base).token, 'токен должен появиться после подключения')
+}
+
 test('ссылка из админки подключает клиента без подтверждения', skipInCi, async () => {
   const link = await admin('/v1/admin/pairing', { method: 'POST', body: JSON.stringify({ ttlSeconds: 600 }) })
   assert.equal(link.status, 201)
@@ -118,6 +127,8 @@ test('ссылка из админки подключает клиента бе�
 })
 
 test('после подключения клиент объявляет плагины и исполняет команду', skipInCi, async () => {
+  // тест не должен зависеть от соседнего: подключаемся сами, если токена нет
+  await ensurePaired()
   let state = live(base)
   const plugins = await loadPlugins({ dir: join(dir, 'plugins') })
   assert.deepEqual(plugins.map((plugin) => plugin.api.name), ['shell', 'job', 'files', 'session'])

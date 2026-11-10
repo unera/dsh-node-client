@@ -50,3 +50,20 @@ test('после обычного завершения exec из реестра 
   assert.equal(outcome.ok, true)
   assert.equal(payload(cancelRunning(4243)).cancelled, false, 'опаздывающая отмена никого не находит — и это нормально')
 })
+
+test('отмена диалога апрува: CANCEL по номеру гасит вопрос', async () => {
+  // так устроен approve на клиенте: свой AbortController, а в реестре —
+  // умение его прервать. Таймаут/аборт приходят командой, а не сигналом
+  const controller = new AbortController()
+  let dialogCancelled = false
+  controller.signal.addEventListener('abort', () => { dialogCancelled = true })
+
+  registerRunning(5555, { kill: () => controller.abort() })
+  const outcome = cancelRunning(5555)
+  assert.equal(payload(outcome).cancelled, true, 'отмена должна найти диалог')
+  assert.equal(dialogCancelled, true, 'вопрос обязан закрыться, а не висеть до утра')
+  assert.equal(controller.signal.aborted, true)
+
+  // и после отмены записи не остаётся
+  assert.equal(payload(cancelRunning(5555)).cancelled, false)
+})
