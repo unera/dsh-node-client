@@ -64,7 +64,9 @@ async function withNode (options, body) {
       run.then(() => true).catch(() => true),
       new Promise((resolve) => setTimeout(() => resolve(false), 5000)),
     ])
-    if (!stopped) assert.fail('клиент не остановился по abort за 5 секунд')
+    if (!stopped) {
+      assert.fail(`клиент не остановился по abort за 5 секунд; последнее в логе: ${printed.slice(-3).join(' | ')}`)
+    }
     await fake.close().catch(() => {})
     if (previousHome === undefined) delete process.env.DSHNC_HOME
     else process.env.DSHNC_HOME = previousHome
