@@ -123,3 +123,34 @@ test('pollIdleMs: 0 — периодического опроса нет, буд
   server.close()
   rmSync(dir, { recursive: true, force: true })
 })
+
+test('ворота пробуждения: кадр до ожидания не теряется', async () => {
+  const { createWakeGate } = await import('../lib/runner.mjs')
+  const gate = createWakeGate()
+  // кадр пришёл раньше, чем цикл собрался спать — это и был мёртвый лок
+  gate.nudge()
+  assert.equal(gate.take(), true, 'событие должно запомниться')
+  assert.equal(gate.take(), false, 'и использоваться ровно один раз')
+})
+
+test('ворота пробуждения: ожидание будится кадром', async () => {
+  const { createWakeGate } = await import('../lib/runner.mjs')
+  const gate = createWakeGate()
+  let woke = false
+  const waiting = gate.wait().then(() => { woke = true })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(woke, false, 'без кадра не просыпаемся')
+  gate.nudge()
+  await waiting
+  assert.equal(woke, true)
+  assert.equal(gate.take(), true, 'после пробуждения отметка ждёт следующего ожидания')
+})
+
+test('ворота пробуждения: два кадра подряд не съедаются', async () => {
+  const { createWakeGate } = await import('../lib/runner.mjs')
+  const gate = createWakeGate()
+  gate.nudge()
+  gate.nudge()
+  assert.equal(gate.take(), true)
+  assert.equal(gate.take(), false, 'лишний кадр — не повод крутиться вечно')
+})
