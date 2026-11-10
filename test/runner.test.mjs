@@ -183,3 +183,15 @@ test('об осиротевшей команде клиент пишет в ло
   const dict = readFileSync(new URL('../lib/i18n.mjs', import.meta.url), 'utf8')
   assert.match(dict, /осиротела/, 'у строки должен быть русский вариант')
 })
+
+test('подписка ставится до вопроса о состоянии', async () => {
+  const { readFileSync } = await import('node:fs')
+  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
+  const branch = runner.slice(runner.indexOf('if (!commands.length) {'))
+  const sleepingAt = branch.indexOf('const sleeping = waitForWake()')
+  const askAt = branch.indexOf('presence?.sendAlive')
+  assert.ok(sleepingAt > -1 && askAt > -1, 'ожидание и вопрос должны быть в этой ветке')
+  // в websocket у нас состояние, а не событие: ответ на вопрос может прийти
+  // сразу, поэтому слушатель обязан быть готов раньше вопроса
+  assert.ok(sleepingAt < askAt, 'сначала подписка, потом check_state — иначе ответ упадёт в пустоту')
+})

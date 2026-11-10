@@ -1,6 +1,6 @@
 {
   "name": "@dr-co/dsh-node-client",
-  "version": "0.0.89",
+  "version": "0.0.90",
   "description": "Client for dsh-nodes: runs on a remote machine, declares its APIs and executes commands from a DSH session",
   "type": "module",
   "bin": {
