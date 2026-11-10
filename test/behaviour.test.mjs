@@ -58,7 +58,13 @@ async function withNode (options, body) {
     await body(fake, { printed, store, url: fake.url })
   } finally {
     controller.abort()
-    await run.catch(() => {})
+    // остановка клиента не должна вешать тест: если run не завершился за 5 с,
+    // это дефект клиента, и о нём надо сказать, а не висеть до таймаута CI
+    const stopped = await Promise.race([
+      run.then(() => true).catch(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 5000)),
+    ])
+    if (!stopped) assert.fail('клиент не остановился по abort за 5 секунд')
     await fake.close().catch(() => {})
     if (previousHome === undefined) delete process.env.DSHNC_HOME
     else process.env.DSHNC_HOME = previousHome
@@ -183,7 +189,13 @@ test('401 без JSON не стирает токен узла', async () => {
     assert.equal(store.token(fake.url), 'secret-token', 'токен должен остаться: 401 от прокси — не отказ узла')
   } finally {
     controller.abort()
-    await run.catch(() => {})
+    // остановка клиента не должна вешать тест: если run не завершился за 5 с,
+    // это дефект клиента, и о нём надо сказать, а не висеть до таймаута CI
+    const stopped = await Promise.race([
+      run.then(() => true).catch(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 5000)),
+    ])
+    if (!stopped) assert.fail('клиент не остановился по abort за 5 секунд')
     await fake.close().catch(() => {})
     if (previousHome === undefined) delete process.env.DSHNC_HOME
     else process.env.DSHNC_HOME = previousHome

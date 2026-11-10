@@ -1,6 +1,6 @@
 {
   "name": "@dr-co/dsh-node-client",
-  "version": "0.0.102",
+  "version": "0.0.103",
   "description": "Client for dsh-nodes: runs on a remote machine, declares its APIs and executes commands from a DSH session",
   "type": "module",
   "bin": {
@@ -18,7 +18,7 @@
     "README.md"
   ],
   "scripts": {
-    "test": "node --test --test-concurrency=1 test/*.test.mjs"
+    "test": "node --test --test-timeout=180000 --test-concurrency=1 test/*.test.mjs"
   },
   "keywords": [
     "dsh",
