@@ -154,3 +154,32 @@ test('ворота пробуждения: два кадра подряд не �
   assert.equal(gate.take(), true)
   assert.equal(gate.take(), false, 'лишний кадр — не повод крутиться вечно')
 })
+
+test('409 на отправке результата — это «поздно», а не ошибка', async () => {
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 409,
+    text: async () => JSON.stringify({ code: 'bad_request', message: 'команда 14 уже закрыта' }),
+  })
+  try {
+    const api = await import('../lib/api.mjs')
+    const response = await api.result('http://example.invalid', 'token', 14, { ok: true })
+    assert.equal(response.body.late, true, 'клиент должен понять, что опоздал, а не падать')
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('об осиротевшей команде клиент пишет в лог', async () => {
+  const { readFileSync } = await import('node:fs')
+  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
+  assert.match(runner, /run\.orphanResult/, 'молчать про отброшенный результат нельзя')
+  const { t } = await import('../lib/i18n.mjs')
+  const line = t('run.orphanResult', { seq: 14, method: 'exec' })
+  assert.match(line, /14/)
+  assert.match(line, /exec/)
+  // русская строка живёт рядом, в словаре; t() без языка отдаёт английскую
+  const dict = readFileSync(new URL('../lib/i18n.mjs', import.meta.url), 'utf8')
+  assert.match(dict, /осиротела/, 'у строки должен быть русский вариант')
+})
