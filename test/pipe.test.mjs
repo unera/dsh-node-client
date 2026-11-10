@@ -51,3 +51,20 @@ test('хвост stderr ограничен', () => {
   assert.equal(stderrTail(long).length, PIPE_LIMITS.stderrTail)
   assert.equal(stderrTail('коротко'), 'коротко')
 })
+
+test('отмена: нет цели — это успех, а не ошибка', async () => {
+  const { cancelRunning } = await import('../lib/plugins/pipe-run.mjs')
+  const outcome = cancelRunning(999)
+  assert.equal(outcome.ok, true)
+  const payload = JSON.parse(outcome.results[0].text)
+  assert.equal(payload.cancelled, false)
+  assert.equal(payload.reason, 'no_such_process')
+})
+
+test('служебное имя уходит в handleControl, обычное — в handle', async () => {
+  const { readFileSync } = await import('node:fs')
+  const index = readFileSync(new URL('../lib/plugins/index.mjs', import.meta.url), 'utf8')
+  assert.match(index, /startsWith\('#'\)/, 'имена с решёткой ищутся отдельно')
+  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
+  assert.match(runner, /handleControl/, 'раннер обязан звать служебный обработчик')
+})
