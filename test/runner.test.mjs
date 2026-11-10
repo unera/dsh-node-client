@@ -91,7 +91,7 @@ test('падение команды не роняет пул и не заним�
   assert.equal(pool.busy, 0, 'слот вернулся')
 })
 
-test('pollIdleMs: 0 — периодического опроса нет, будит только кадр', async () => {
+test('опроса нет вовсе: будит только кадр, даже если старый конфиг просит опрос', async () => {
   const { runServer } = await import('../lib/runner.mjs')
   let calls = 0
   const controller = new AbortController()
@@ -109,7 +109,8 @@ test('pollIdleMs: 0 — периодического опроса нет, буд
   store.saveToken?.(base, 'test-token')
   const run = runServer({
     url: base,
-    config: { pollIdleMs: 0, token: 'test-token' },
+    // ключ из старых конфигов: он больше ничего не значит
+    config: { pollIdleMs: 5000, token: 'test-token' },
     print: () => {},
     signal: controller.signal,
     plugins: [],
