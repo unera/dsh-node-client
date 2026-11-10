@@ -3,8 +3,9 @@
  *
  * This checks what used to be "checked" by searching for strings in the source:
  * whether `now` goes into the envelope, whether the line about an orphaned result is written,
- * whether the FLUSH barrier answers through the real pool, whether `conn` gets into hello,
- * and how internal names are routed.
+ * whether the FLUSH barrier answers through the real pool, whether `client_epoch` gets into
+ * the announce, how internal names are routed, and how the epoch protocol recovers from a
+ * generation mismatch.
  */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
@@ -80,9 +81,9 @@ test('result envelope carries the node clock', async () => {
   }, async (fake) => {
     assert.ok(await waitFor(() => fake.calls.results.length > 0), 'клиент должен отправить результат')
     assert.equal(typeof fake.calls.results[0].body.now, 'number', 'часы узла едут в конверте, а не в тексте')
-    const hello = fake.calls.frames.find((frame) => frame.t === 'hello')
-    assert.ok(hello, 'клиент должен здороваться')
-    assert.equal(typeof hello.conn, 'number', 'номер соединения нужен серверу, чтобы не было двух клиентов')
+    // the connection counter travels in the announce: it is how the server keeps one
+    // connection out of two
+    assert.equal(typeof fake.calls.announces[0]?.client_epoch, 'number', 'счётчик соединения нужен серверу')
   })
 })
 
@@ -126,12 +127,12 @@ test('socket drop does not turn into polling: the client reconnects', async () =
   await withNode({
     commands: [{ seq: 1, api: 1, method: 'exec', args: {}, timeout: 10, sandbox: { mode: 'rw' } }],
   }, async (fake) => {
-    assert.ok(await waitFor(() => fake.calls.frames.some((frame) => frame.t === 'hello')), 'сначала здороваемся')
+    assert.ok(await waitFor(() => fake.calls.sockets >= 1), 'клиент должен открыть сокет')
     // the server drops the socket - the client must open a new one, not start polling
     fake.dropSockets()
     assert.ok(
-      await waitFor(() => fake.calls.frames.filter((frame) => frame.t === 'hello').length >= 2, { timeoutMs: 6000 }),
-      'после разрыва клиент должен переподключиться и поздороваться заново',
+      await waitFor(() => fake.calls.sockets >= 2, { timeoutMs: 6000 }),
+      'после разрыва клиент должен переподключиться',
     )
   })
 })
@@ -141,7 +142,7 @@ test('retry after an error keeps the pause instead of spinning per socket frame'
   // starts serving 404 HTML and drops the connection - that is when the old code
   // (a pause interrupted by a socket frame) went into a tight loop.
   await withNode({}, async (fake, client) => {
-    assert.ok(await waitFor(() => fake.calls.frames.some((frame) => frame.t === 'hello')), 'клиент должен подключиться')
+    assert.ok(await waitFor(() => fake.calls.sockets >= 1), 'клиент должен подключиться')
 
     const brokenAt = Date.now()
     fake.breakHttp()
@@ -205,19 +206,89 @@ test('401 without JSON does not wipe the node token', async () => {
   }
 })
 
-test('restart is declared once: null in hello and in the first check_state, then numbers', async () => {
+test('the client speaks the epoch protocol: client_epoch in the announce and in commands', async () => {
   await withNode({
     commands: [{ seq: 1, api: 1, method: 'exec', args: {}, timeout: 10, sandbox: { mode: 'rw' } }],
   }, async (fake) => {
     assert.ok(await waitFor(() => fake.calls.results.length > 0), 'the client must execute the command')
-    const hello = fake.calls.frames.find((frame) => frame.t === 'hello')
-    assert.ok(hello, 'hello must be sent')
-    assert.equal(hello.known, null, 'a fresh process declares the restart in hello')
 
-    const checks = fake.calls.frames.filter((frame) => frame.t === 'check_state')
-    assert.equal(checks[0]?.known, null, 'the first wait frame repeats the declaration — the server reacts to it, not to hello')
-    const nulls = checks.filter((frame) => frame.known === null)
-    assert.equal(nulls.length, 1, `exactly one null frame is allowed, got ${nulls.length}: ${JSON.stringify(checks.map((c) => c.known))}`)
-    assert.ok(checks.slice(1).every((frame) => typeof frame.known === 'number'), 'every later frame carries a number')
+    const ann = fake.calls.announces[0]
+    assert.ok(ann, 'the client must announce itself')
+    assert.equal(typeof ann.client_epoch, 'number', 'the connection counter travels in the announce')
+    assert.ok('epoch' in ann, 'the announce names the generation the client knows')
+    assert.equal(ann.epoch, null, 'a fresh state file knows no generation')
+    assert.equal(ann.known, undefined, 'known is gone from the announce')
+    assert.equal(ann.proto, undefined, 'proto is gone from the announce')
+    assert.equal(ann.max_commandno, undefined, 'the announce reports no command number')
+    assert.equal(typeof ann.platform, 'string', 'the platform is named separately from the version')
+
+    const paths = new Set(fake.calls.requests.map((entry) => entry.path))
+    assert.ok(![...paths].some((path) => path.endsWith('/v1/state')), `GET /v1/state is gone from the protocol: ${[...paths].join(', ')}`)
+
+    const query = fake.calls.commandQueries[0]
+    assert.ok(query, 'the client must ask for commands')
+    assert.equal(query.client_epoch, String(ann.client_epoch), 'commands carry the same connection counter')
+    assert.equal(query.epoch, '1', 'commands carry the generation the server named')
+
+    for (const frame of fake.calls.frames) {
+      assert.ok(['state', 'ping'].includes(frame.t), `unexpected frame ${frame.t}`)
+      assert.equal(frame.known, undefined, 'known is gone from the frames')
+      assert.equal(frame.proto, undefined, 'proto is gone from the frames')
+    }
+    const wait = fake.calls.frames.find((frame) => frame.t === 'state')
+    assert.ok(wait, 'the client declares that it is waiting')
+    assert.equal(wait.epoch, 1, 'the wait frame carries the generation')
+    assert.equal(wait.client_epoch, ann.client_epoch, 'the wait frame carries the connection counter too')
+    assert.equal(typeof wait.max_commandno, 'number', 'the wait frame carries the executed number')
+  })
+})
+
+test('epoch-mismatch on commands resets the epoch and starts over from the announce', async () => {
+  await withNode({ bumpOnAnnounce: true, commandErrors: ['epoch-mismatch'] }, async (fake, client) => {
+    assert.ok(
+      await waitFor(() => fake.calls.announces.length >= 2, { timeoutMs: 6000 }),
+      `the client must announce again; log: ${client.printed.join(' | ')}`,
+    )
+    assert.equal(fake.calls.announces[0].epoch, null, 'the first announce knows no generation')
+    assert.equal(fake.calls.announces[1].epoch, null, 'the epoch is reset to null before the new announce')
+    assert.ok(
+      fake.calls.announces[1].client_epoch > fake.calls.announces[0].client_epoch,
+      'the connection counter grows with the new generation',
+    )
+    assert.ok(
+      await waitFor(() => client.store.readState(client.url).epoch === fake.epoch()),
+      `the new generation must be adopted, got ${client.store.readState(client.url).epoch}, expected ${fake.epoch()}`,
+    )
+  })
+})
+
+test('a socket closed with 4409 resets the epoch and starts over from the announce', async () => {
+  await withNode({ bumpOnAnnounce: true, closeOnConnect: [4409] }, async (fake, client) => {
+    assert.ok(
+      await waitFor(() => fake.calls.announces.length >= 2, { timeoutMs: 6000 }),
+      `a 4409 close must lead to a new announce; log: ${client.printed.join(' | ')}`,
+    )
+    assert.equal(fake.calls.announces[1].epoch, null, 'the epoch is reset to null before the new announce')
+    assert.ok(await waitFor(() => fake.calls.sockets >= 2), 'a fresh socket is opened')
+    assert.ok(
+      await waitFor(() => client.store.readState(client.url).epoch === fake.epoch()),
+      `the new generation must be adopted, got ${client.store.readState(client.url).epoch}, expected ${fake.epoch()}`,
+    )
+  })
+})
+
+test('max_commandno from a state frame is never adopted: the client reports only what it executed', async () => {
+  await withNode({
+    commands: [{ seq: 1, api: 1, method: 'exec', args: {}, timeout: 10, sandbox: { mode: 'rw' } }],
+    // the server names a number far ahead: there is no cursor to repair with it
+    pushState: { max_commandno: 9999 },
+  }, async (fake, client) => {
+    assert.ok(await waitFor(() => fake.calls.results.length > 0), 'the client must execute the command')
+    const sent = () => fake.calls.frames.filter((frame) => frame.t === 'state').map((frame) => frame.max_commandno)
+    assert.ok(
+      await waitFor(() => sent().includes(1), { timeoutMs: 4000 }),
+      `the executed command number must be reported; frames: ${sent().join(', ')} (log: ${client.printed.join(' | ')})`,
+    )
+    assert.ok(sent().every((no) => no <= 1), `the server number must not be adopted: ${sent().join(', ')}`)
   })
 })

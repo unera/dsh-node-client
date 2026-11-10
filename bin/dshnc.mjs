@@ -9,7 +9,7 @@
  *   dshnc version              client version and protocol version
  *
  * One client can work with several servers: the connection state
- * (token, cursor, epoch) is kept per URL.
+ * (token, epoch) is kept per URL.
  */
 import { join } from 'node:path'
 import { loadConfig, normalizeUrl } from '../lib/config.mjs'
@@ -21,7 +21,7 @@ import { applyAutostartAnswers, resolveExecStart, runAutostart } from '../lib/au
 import { formatQuestion } from '../lib/ask.mjs'
 import { home, openStore } from '../lib/store.mjs'
 import * as api from '../lib/api.mjs'
-import { PROTO, VERSION } from '../lib/api.mjs'
+import { VERSION } from '../lib/api.mjs'
 import { createInterface } from 'node:readline/promises'
 import { mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -189,7 +189,7 @@ async function main (argv) {
   }
 
   if (command === 'version' || command === '--version' || command === '-v') {
-    out(t('version.line', { version: VERSION, proto: PROTO }))
+    out(t('version.line', { version: VERSION }))
     return 0
   }
 
@@ -326,7 +326,6 @@ async function main (argv) {
       out(t('status.server', {
         url,
         token: state.token ? t('status.token.yes') : t('status.token.no'),
-        cursor: state.cursor ?? '—',
         epoch: state.epoch ?? '—',
         alias: state.alias ? t('status.alias', { alias: state.alias }) : '',
       }))
@@ -370,7 +369,7 @@ async function main (argv) {
     // SIGHUP is handled by the runner itself: it also wakes the sleeping loop and
     // re-announces the API. We do nothing here so there is no second source of truth.
     const plugins = await loadPlugins({ dir: join(home(), 'plugins'), log: (level, message) => out(message) })
-    out(t('version.line', { version: VERSION, proto: PROTO }))
+    out(t('version.line', { version: VERSION }))
     out(t('daemon.servers', { servers: targets.join(', ') }))
     out(t('daemon.plugins', { plugins: plugins.map((plugin) => plugin.api.name).join(', ') }))
     const shell = process.env.DSHNC_SHELL ?? '/bin/sh'

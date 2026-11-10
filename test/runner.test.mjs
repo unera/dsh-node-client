@@ -99,7 +99,7 @@ test('there is no polling at all: only a frame wakes it up, even if an old confi
   const server = createServer((req, res) => {
     calls++
     res.writeHead(200, { 'content-type': 'application/json' })
-    res.end(JSON.stringify({ commands: [], cursor: null, ready: 0, epoch: 1, state: 0, node: 1, apis: [], warnings: [] }))
+    res.end(JSON.stringify({ commands: [], ready: 0, epoch: 1, node: 1, apis: [], warnings: [] }))
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = server.address().port
@@ -195,14 +195,9 @@ test('the barrier does not wait for itself and does not answer before the work i
   assert.deepEqual(order, ['exec', 'flush'], 'барьер отвечает только после работы до него')
 })
 
-test('the client accepts the number the server named - that is how the gaps get closed', async () => {
-  const { adoptMaxCommandno } = await import('../lib/runner.mjs')
-  // the server issued 1..4 and burned 5 on a cancelled command: the maximum among the received ones is 4,
-  // but the server names 5, and the client must accept it
-  assert.equal(adoptMaxCommandno(4, 5), 5)
-  assert.equal(adoptMaxCommandno(57, 54), 57, 'назад номер не едет: приоритетная отмена приходит раньше низких')
-  assert.equal(adoptMaxCommandno(null, 5), 5, 'первый ответ тоже принимается')
-  assert.equal(adoptMaxCommandno(5, undefined), 5, 'мусор в поле ничего не ломает')
-  assert.equal(adoptMaxCommandno(5, 'нет'), 5)
+test('there is no cursor adoption any more: the client reports only its own numbers', async () => {
+  const runner = await import('../lib/runner.mjs')
+  // the old `adoptMaxCommandno` took the number from the server and closed the holes of a
+  // cancelled command with it. With the cursor gone that knowledge has nowhere to live
+  assert.equal(runner.adoptMaxCommandno, undefined, 'принятие номера от сервера удалено вместе с курсором')
 })
-
