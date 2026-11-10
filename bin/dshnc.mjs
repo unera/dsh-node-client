@@ -154,7 +154,7 @@ async function main (argv) {
             `сервер: ${url ?? 'не подключён'}`,
             `каталоги: ${(policy.roots ?? cfg?.roots ?? []).join(', ') || '—'}`,
             `режимы: base ${policy.base ?? '—'}, потолок ${policy.max ?? '—'}, вопросы ${policy.approver ?? '—'}`,
-            `связь: опрос ${cfg?.pollIdleMs ?? 0} мс, пинг ${cfg?.pingInterval ?? 0} с`,
+            `связь: пинг ${cfg?.pingInterval ?? 0} с`,
           ]
         },
       })
