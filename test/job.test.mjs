@@ -1,5 +1,5 @@
 /**
- * Фоновые процессы: запуск, чтение по смещению, убийство группы.
+ * Background processes: start, read by offset, kill the group.
  */
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -11,13 +11,13 @@ import { createJobRegistry } from '../lib/jobs.mjs'
 
 const text = (result) => JSON.parse(result.results[0].text)
 
-test('start возвращает id сразу, а вывод дочитывается по смещению', async () => {
+test('start returns the id at once, and the output is read further by offset', async () => {
   const jobs = createJobRegistry()
   const started = jobs.start({ command: 'echo раз; sleep 0.15; echo два' })
   assert.equal(started.ok, true)
   const id = text(started).id
   assert.match(id, /^job-[0-9a-f]{16}$/)
-  // сразу после старта процесс ещё идёт — ответ уже есть, это и есть смысл job
+  // right after the start the process is still running - the answer is already there, and that is the point of job
   assert.equal(text(started).status, 'running')
 
   await new Promise((resolve) => setTimeout(resolve, 400))
@@ -26,13 +26,13 @@ test('start возвращает id сразу, а вывод дочитывае
   assert.equal(all.code, 0)
   assert.match(all.stdout, /раз[\s\S]*два/)
 
-  // повторное чтение с того же места ничего не отдаёт: смещение запомнено
+  // a repeated read from the same place gives nothing: the offset is remembered
   const again = text(jobs.output(id))
   assert.equal(again.stdout, '')
   assert.ok(again.offset > 0)
 })
 
-test('stdout и stderr не смешиваются', async () => {
+test('stdout and stderr are not mixed', async () => {
   const jobs = createJobRegistry()
   const id = text(jobs.start({ command: 'echo в-выход; echo в-ошибку >&2' })).id
   await new Promise((resolve) => setTimeout(resolve, 300))
@@ -42,11 +42,11 @@ test('stdout и stderr не смешиваются', async () => {
   assert.doesNotMatch(out.stdout, /в-ошибку/)
 })
 
-test('kill убивает не только оболочку, но и внуков', async () => {
+test('kill kills not only the shell but also the grandchildren', async () => {
   const jobs = createJobRegistry()
   const marker = '/tmp/dshnc-job-kill-marker'
   rmSync(marker, { force: true })
-  // внук пишет файл спустя секунду: если группу не убили, файл появится
+  // the grandchild writes a file a second later: if the group was not killed, the file appears
   const id = text(jobs.start({ command: `sh -c '(sleep 1; echo жив > ${marker}) & wait'` })).id
   await new Promise((resolve) => setTimeout(resolve, 150))
   const killed = jobs.kill(id)
@@ -57,7 +57,7 @@ test('kill убивает не только оболочку, но и внуко
   assert.throws(() => readFileSync(marker), 'внук не должен был дожить до записи')
 })
 
-test('потолок процессов и неизвестный id отвечают внятно', () => {
+test('the process ceiling and an unknown id answer clearly', () => {
   const jobs = createJobRegistry({ maxJobs: 1 })
   const first = jobs.start({ command: 'sleep 5' })
   assert.equal(first.ok, true)
@@ -68,7 +68,7 @@ test('потолок процессов и неизвестный id отвеч�
   jobs.kill(text(first).id, 'SIGKILL')
 })
 
-test('список показывает живое и завершённое', async () => {
+test('the list shows running and finished ones', async () => {
   const jobs = createJobRegistry()
   const id = text(jobs.start({ command: 'echo ок' })).id
   await new Promise((resolve) => setTimeout(resolve, 300))
@@ -78,10 +78,10 @@ test('список показывает живое и завершённое', a
   assert.equal(list[0].status, 'completed')
 })
 
-test('задание в песочнице: запись вне roots отвергается ядром', async () => {
+test('job in the sandbox: a write outside roots is rejected by the kernel', async () => {
   const { profileArgs, probe } = await import('../lib/sandbox.mjs')
   const roots = [mkdtempSync(join(tmpdir(), 'dshnc-job-sandbox-'))]
-  if (!probe().available) return  // без bwrap проверять нечего
+  if (!probe().available) return  // without bwrap there is nothing to check
   const sandbox = { mode: 'rw', args: profileArgs({ mode: 'rw', writable: roots, workdir: roots[0] }), probe }
   const jobs = createJobRegistry()
   const id = text(jobs.start({

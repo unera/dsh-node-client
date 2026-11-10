@@ -1,5 +1,5 @@
 /**
- * Локальный апрув: сборка команды и ответ человека.
+ * Local approval: building the command and the human answer.
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -9,32 +9,32 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { askLocally, buildArgs, splitArgs, usesStdin } from '../lib/approver.mjs'
 
-test('шаблон разбивается до подстановки: пробелы в тексте не рвут аргумент', () => {
+test('the template is split before substitution: spaces in the text do not break the argument', () => {
   const args = buildArgs('zenity --question --text=%s', 'разрешить rm -rf?')
   assert.deepEqual(args, ['zenity', '--question', '--text=разрешить rm -rf?'])
 })
 
-test('кавычки в шаблоне уважаются', () => {
+test('quotes in the template are respected', () => {
   assert.deepEqual(splitArgs('a --b="c d" e'), ['a', '--b=c d', 'e'])
 })
 
-test('код 0 значит «разрешено», ненулевой — «нет»', async () => {
+test('code 0 means "allowed", non-zero means "no"', async () => {
   assert.equal(await askLocally({ tool: 'true %s', prompt: 'x', payload: '{}' }), true)
   assert.equal(await askLocally({ tool: 'false %s', prompt: 'x', payload: '{}' }), false)
 })
 
-test('отмена сигналом прекращает ожидание', async () => {
+test('cancellation by signal stops the wait', async () => {
   const controller = new AbortController()
   const waiting = askLocally({ tool: 'sleep 5', prompt: 'x', payload: '{}', signal: controller.signal })
   controller.abort()
   await assert.rejects(() => waiting, /отменён/)
 })
 
-test('пустая команда — честная ошибка, а не тишина', async () => {
+test('an empty command is an honest error, not silence', async () => {
   await assert.rejects(() => askLocally({ tool: '   ', prompt: 'x', payload: '{}' }), /пустая/)
 })
 
-test('без %s текст уходит на stdin, а не в командную строку', async () => {
+test('without %s the text goes to stdin, not to the command line', async () => {
   const file = '/tmp/dshnc-approver-stdin.txt'
   rmSync(file, { force: true })
   const tool = `sh -c "cat > ${file}"`
@@ -45,7 +45,7 @@ test('без %s текст уходит на stdin, а не в командну�
   rmSync(file, { force: true })
 })
 
-test('структурированные данные едут в окружении', async () => {
+test('structured data travels in the environment', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-env-'))
   const script = join(dir, 'approver.sh')
   const out = join(dir, 'seen.txt')
@@ -56,11 +56,11 @@ test('структурированные данные едут в окружен
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('пустая команда — честная ошибка, а не тишина', async () => {
+test('an empty command is an honest error, not silence', async () => {
   await assert.rejects(() => askLocally({ tool: '   ', prompt: 'x', payload: '{}' }), /пустая/)
 })
 
-test('без %s текст уходит на stdin, а не в командную строку', async () => {
+test('without %s the text goes to stdin, not to the command line', async () => {
   const file = '/tmp/dshnc-approver-stdin.txt'
   rmSync(file, { force: true })
   const tool = `sh -c "cat > ${file}"`
@@ -72,7 +72,7 @@ test('без %s текст уходит на stdin, а не в командну�
 })
 
 
-test('в окружение вопроса едут сессия и номер вопроса', async () => {
+test('the session and the question number travel in the question environment', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-envs-'))
   const script = join(dir, 'approver.sh')
   const out = join(dir, 'seen.txt')

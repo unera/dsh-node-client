@@ -1,9 +1,9 @@
 /**
- * Подключение по ссылке с кодом: админ жмёт «подключить клиента», клиент
- * запускает `dshnc connect <ссылка>` и сразу получает токен.
+ * Pairing by a link with a code: the admin presses "connect client", the client
+ * runs `dshnc connect <link>` and gets the token right away.
  *
- * Проверяем настоящим сервером плагина: код выдаётся, гасится, второй раз не
- * работает, а клиент после этого объявляет свой API и исполняет команду.
+ * We check with a real plugin server: the code is issued, burned, does not work a second
+ * time, and after that the client announces its API and executes a command.
  */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
@@ -24,9 +24,9 @@ import { pairServer, runServer } from '../lib/runner.mjs'
 import { setLang } from '../lib/i18n.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
 
-// Сквозные тесты поднимают демон, соединяются по websocket и исполняют команды
-// в песочнице: в раннере GitHub нет bwrap, поэтому здесь они пропускаются, а
-// локально и на живом хосте идут полностью.
+// End-to-end tests bring up the daemon, connect over websocket and execute commands
+// inside the sandbox: the GitHub runner has no bwrap, so here they are skipped, while
+// locally and on a live host they run in full.
 const skipInCi = process.env.CI ? { skip: 'нужен bwrap и живой демон' } : {}
 
 
@@ -72,11 +72,11 @@ after(() => {
   delete process.env.DSHNC_HOME
 })
 
-// Админка больше не живёт на публичном префиксе: операции вызываются
-// функциями плагина с тем же store и queue, что и у поднятого сервера.
+// The admin UI no longer lives on a public prefix: operations are invoked
+// by plugin functions with the same store and queue as the server that is up.
 const deps = () => ({ store, queue, config: NODES_CONFIG, prefix: '/dsh-nodes', origin: base.replace(/\/dsh-nodes$/, '') })
 
-/** Свежий снимок состояния сервера: демон пишет в sqlite, читаем заново. */
+/** A fresh snapshot of the server state: the daemon writes to sqlite, we read it again. */
 function live (url) {
   const store = openStore()
   const state = store.readState(url)
@@ -97,7 +97,7 @@ async function admin (path, options = {}) {
   throw new Error(`нет админ-маршрута ${path}`)
 }
 
-/** Подключить клиента по ссылке: без этого дальнейшие проверки не о чем. */
+/** Connect the client by a link: without this the further checks make no sense. */
 async function ensurePaired () {
   if (live(base).token) return
   const link = await admin('/v1/admin/pairing', { method: 'POST', body: JSON.stringify({ ttlSeconds: 600 }) })
@@ -106,7 +106,7 @@ async function ensurePaired () {
   assert.ok(live(base).token, 'токен должен появиться после подключения')
 }
 
-test('ссылка из админки подключает клиента без подтверждения', skipInCi, async () => {
+test('a link from the admin UI connects the client without confirmation', skipInCi, async () => {
   const link = await admin('/v1/admin/pairing', { method: 'POST', body: JSON.stringify({ ttlSeconds: 600 }) })
   assert.equal(link.status, 201)
   assert.match(link.body.url, /\?v=/)
@@ -126,8 +126,8 @@ test('ссылка из админки подключает клиента бе�
   assert.equal(again.status, 409, 'код одноразовый')
 })
 
-test('после подключения клиент объявляет плагины и исполняет команду', skipInCi, async () => {
-  // тест не должен зависеть от соседнего: подключаемся сами, если токена нет
+test('after connecting the client announces plugins and executes a command', skipInCi, async () => {
+  // the test must not depend on its neighbour: connect by itself if there is no token
   await ensurePaired()
   let state = live(base)
   const plugins = await loadPlugins({ dir: join(dir, 'plugins') })

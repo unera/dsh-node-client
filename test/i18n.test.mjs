@@ -1,12 +1,12 @@
 /**
- * Язык сообщений: китайский, английский (по умолчанию) и русский.
+ * Message language: Chinese, English (default) and Russian.
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { detectLang, keys, lang, normalizeLang, setLang, t, table } from '../lib/i18n.mjs'
 
-test('локаль приводится к поддерживаемому языку', () => {
+test('a locale is reduced to a supported language', () => {
   assert.equal(normalizeLang('ru_RU.UTF-8'), 'ru')
   assert.equal(normalizeLang('ru-RU'), 'ru')
   assert.equal(normalizeLang('zh_CN.UTF-8'), 'zh')
@@ -16,7 +16,7 @@ test('локаль приводится к поддерживаемому язы
   assert.equal(normalizeLang(''), null)
 })
 
-test('порядок источников: DSHNC_LANG важнее локальных', () => {
+test('order of sources: DSHNC_LANG wins over the locale', () => {
   assert.equal(detectLang({ DSHNC_LANG: 'ru', LC_ALL: 'zh_CN.UTF-8', LANG: 'en_US' }), 'ru')
   assert.equal(detectLang({ LC_ALL: 'zh_CN.UTF-8', LANG: 'en_US' }), 'zh')
   assert.equal(detectLang({ LC_ALL: 'C', LANG: 'ru_RU.UTF-8' }), 'ru')
@@ -24,7 +24,7 @@ test('порядок источников: DSHNC_LANG важнее локаль�
   assert.equal(detectLang({}), 'en')
 })
 
-test('переключение языка меняет текст', () => {
+test('switching the language changes the text', () => {
   setLang('ru')
   assert.match(t('help.help'), /экран/)
   assert.equal(lang(), 'ru')
@@ -34,7 +34,7 @@ test('переключение языка меняет текст', () => {
   assert.match(t('help.help'), /screen/)
 })
 
-test('все ключи есть во всех трёх языках', () => {
+test('every key exists in all three languages', () => {
   for (const key of keys()) {
     for (const language of ['en', 'ru', 'zh']) {
       assert.ok(table(language)[key], `${language}: нет ключа ${key}`)
@@ -42,7 +42,7 @@ test('все ключи есть во всех трёх языках', () => {
   }
 })
 
-test('подстановка переменных и запасной английский', () => {
+test('variable substitution and the English fallback', () => {
   setLang('ru')
   assert.equal(t('status.alias', { alias: 'nbw' }), ', узел nbw')
   setLang('xx')
@@ -50,7 +50,7 @@ test('подстановка переменных и запасной англи
   assert.equal(t('нет-такого-ключа'), 'нет-такого-ключа')
 })
 
-test('описания API тоже локализованы', async () => {
+test('API descriptions are localised too', async () => {
   const { api } = await import('../lib/plugins/shell.mjs')
   setLang('en')
   assert.match(api().description, /Shell/)

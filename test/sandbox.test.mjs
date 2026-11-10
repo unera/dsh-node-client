@@ -1,5 +1,5 @@
 /**
- * Песочница: профили bwrap, классификация отказа, режимы и каталоги сессий.
+ * Sandbox: bwrap profiles, denial classification, modes and session directories.
  */
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -13,7 +13,7 @@ import { runBash } from '../lib/bash.mjs'
 import { openStore } from '../lib/store.mjs'
 import { policyFor, sandboxFor } from '../lib/runner.mjs'
 
-test('режим сужается до потолка, но не расширяется', () => {
+test('the mode narrows to the ceiling but never widens', () => {
   assert.equal(narrower('full', 'ro'), 'ro')
   assert.equal(narrower('ro', 'full'), 'ro')
   assert.equal(narrower('rw', 'rw'), 'rw')
@@ -21,7 +21,7 @@ test('режим сужается до потолка, но не расширя�
   assert.deepEqual(WIDER_MODES.full, [])
 })
 
-test('в ro-профиле нет привязки на запись, в rw есть', () => {
+test('the ro profile has no write bind, the rw one does', () => {
   const ro = profileArgs({ mode: 'ro', cwd: '/tmp' })
   assert.ok(ro.includes('--ro-bind'))
   assert.ok(!ro.includes('--bind'), 'в ro не должно быть записи')
@@ -33,25 +33,25 @@ test('в ro-профиле нет привязки на запись, в rw ес
   assert.deepEqual(profileArgs({ mode: 'full' }), [], 'full не оборачивается')
 })
 
-test('отказ распознаётся по сигнатуре, код возврата — вторичен', () => {
+test('a denial is recognised by its signature, the exit code is secondary', () => {
   assert.equal(classify({ code: 1, stderr: 'cannot touch: Read-only file system', mode: 'ro' }).denied, true)
-  // составная команда может вернуть 0, хотя запись уже отвергнута ядром
+  // a compound command can return 0 even though the write was already rejected by the kernel
   assert.equal(classify({ code: 0, stderr: 'bash: /x: Read-only file system', mode: 'ro' }).denied, true)
   assert.equal(classify({ code: 1, stderr: 'bwrap: No permissions to creating new namespace', mode: 'ro' }).runnerFailure, true)
   assert.equal(classify({ code: 1, stderr: 'command not found', mode: 'ro' }).denied, false)
   assert.equal(classify({ code: 1, stderr: 'Read-only file system', mode: 'full' }).denied, false)
 })
 
-test('bwrap на этой машине работает', process.env.CI ? { skip: 'в раннере GitHub нет прав на user namespaces' } : {}, () => {
+test('bwrap works on this machine', process.env.CI ? { skip: 'в раннере GitHub нет прав на user namespaces' } : {}, () => {
   const result = probe()
   assert.equal(result.available, true, `bwrap не работает: ${result.reason ?? ''}`)
 })
 
-test('песочница реально не даёт писать вне workdir', process.env.CI ? { skip: 'нужен bwrap' } : {}, async () => {
+test('the sandbox really forbids writing outside workdir', process.env.CI ? { skip: 'нужен bwrap' } : {}, async () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-sb-'))
   const work = join(root, 'work')
   mkdirSync(work, { recursive: true })
-  // специально не в /tmp: там в песочнице свой tmpfs, и запись была бы разрешена
+  // deliberately not in /tmp: it has its own tmpfs inside the sandbox, so the write would be allowed
   const outsideDir = mkdtempSync('/var/tmp/dshnc-outside-')
   const outside = join(outsideDir, 'outside.txt')
   writeFileSync(outside, 'x')
@@ -65,7 +65,7 @@ test('песочница реально не даёт писать вне workdi
   const inside = await runBash({ command: 'echo ok > inside.txt && cat inside.txt', cwd: work, sandbox })
   assert.match(inside.results[0].text, /ok/)
 
-  // составная команда: код возврата 0, но запись отвергнута — отказ всё равно должен быть виден
+  // compound command: exit code 0, but the write was rejected - the denial must still be visible
   const denied = await runBash({ command: `echo hack > ${outside}; echo код $?`, cwd: work, sandbox })
   const report = JSON.parse(denied.results.at(-1).text)
   assert.equal(report.sandbox.mode, 'rw')
@@ -74,7 +74,7 @@ test('песочница реально не даёт писать вне workdi
   rmSync(outsideDir, { recursive: true, force: true })
 })
 
-test('каталог сессии: внутри roots можно, вне — no', () => {
+test('session directory: allowed inside roots, no outside them', () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-roots-'))
   const work = join(root, 'work')
   mkdirSync(join(work), { recursive: true })
@@ -86,28 +86,28 @@ test('каталог сессии: внутри roots можно, вне — no'
   rmSync(root, { recursive: true, force: true })
 })
 
-test('session.chdir не создаёт каталог, а mkdir создаёт', () => {
+test('session.chdir does not create the directory, mkdir does', () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-mk-'))
   const work = join(root, 'work')
   mkdirSync(work, { recursive: true })
   const store = openStore({ dir: join(root, 'state') })
   const sessions = createSessionStore(store)
 
-  // chdir в несуществующий — ошибка, а не тихое создание
+  // chdir into a missing one is an error, not a silent creation
   assert.throws(() => sessions.chdir('s1', join(root, 'нет-такого'), { roots: [root] }), /нет/)
-  // mkdir создаёт, и после этого chdir работает
+  // mkdir creates it, and after that chdir works
   const made = sessions.mkdir('s1', join(root, 'проект'), { roots: [root], mode: 0o700 })
   assert.equal(made.created, true)
   const again = sessions.mkdir('s1', join(root, 'проект'), { roots: [root] })
   assert.equal(again.created, false, 'повторный mkdir не падает')
   sessions.chdir('s1', join(root, 'проект'), { roots: [root] })
   assert.equal(sessions.cwd('s1', { workdir: work, roots: [root] }), join(root, 'проект'))
-  // за пределы корней mkdir нельзя
+  // mkdir is not allowed outside the roots
   assert.throws(() => sessions.mkdir('s1', '/etc/нельзя', { roots: [root] }), /вне разрешённых/)
   rmSync(root, { recursive: true, force: true })
 })
 
-test('session.chdir переключает каталог и запоминает его', () => {
+test('session.chdir switches the directory and remembers it', () => {
   const root = mkdtempSync(join(tmpdir(), 'dshnc-chdir-'))
   const work = join(root, 'work')
   const other = join(root, 'foobar')
@@ -124,7 +124,7 @@ test('session.chdir переключает каталог и запоминае�
   rmSync(root, { recursive: true, force: true })
 })
 
-test('правила на сервер перекрывают общие, потолок не даёт расширить режим', () => {
+test('per-server rules override the global ones, the ceiling does not allow widening the mode', () => {
   const config = {
     workdir: '/home/u/work',
     access: { max: 'ro', ask: true },
@@ -133,12 +133,12 @@ test('правила на сервер перекрывают общие, пот
   assert.equal(policyFor(config, 'https://a/dsh-nodes').max, 'full')
   assert.equal(policyFor(config, 'https://a/dsh-nodes').ask, false)
   assert.equal(policyFor(config, 'https://b/dsh-nodes').max, 'ro', 'для другого сервера — общий потолок')
-  // сервер просит full, у узла потолок ro
+  // the server asks for full, the node ceiling is ro
   const sandbox = sandboxFor(config, { sandbox: { mode: 'full' }, session: null }, null, 'https://b/dsh-nodes')
   assert.equal(sandbox.mode, 'ro')
 })
 
-test('base понижает обычную команду, но не подтверждённую', () => {
+test('base lowers an ordinary command but not a confirmed one', () => {
   const config = { access: { base: 'rw', max: 'full', approver: 'local' } }
   assert.equal(sandboxFor(config, { sandbox: { mode: 'full' } }, null, 'u').mode, 'rw', 'обычная — по base')
   assert.equal(
@@ -146,19 +146,19 @@ test('base понижает обычную команду, но не подтв�
     'full',
     'подтверждённую понижать нельзя',
   )
-  // при approver: none base не применяется вовсе
+  // with approver: none base is not applied at all
   const none = { access: { base: 'ro', max: 'full', approver: 'none' } }
   assert.equal(sandboxFor(none, { sandbox: { mode: 'full' } }, null, 'u').mode, 'full')
-  // запрошенное уже base остаётся как есть
+  // a request already at base stays as it is
   assert.equal(sandboxFor(config, { sandbox: { mode: 'ro' } }, null, 'u').mode, 'ro')
 })
 
-test('потолок узла режет даже подтверждённую команду', () => {
+test('the node ceiling cuts even a confirmed command', () => {
   const config = { access: { base: 'rw', max: 'rw', approver: 'local' } }
   assert.equal(sandboxFor(config, { sandbox: { mode: 'full' }, approved: 'id' }, null, 'u').mode, 'rw')
 })
 
-test('«Permission denied» вне разрешённых каталогов — это отказ песочницы', () => {
+test('"Permission denied" outside the allowed directories is a sandbox denial', () => {
   const verdict = classify({
     code: 1,
     stderr: "touch: cannot touch '/root/abc.txt': Permission denied",
@@ -169,7 +169,7 @@ test('«Permission denied» вне разрешённых каталогов —
   assert.equal(verdict.signature, 'permission denied')
 })
 
-test('в режиме full отказом не считается: там песочницы нет', () => {
+test('in full mode it does not count as a denial: there is no sandbox there', () => {
   const verdict = classify({ code: 1, stderr: 'Permission denied', mode: 'full' })
   assert.equal(verdict.denied, false)
 })

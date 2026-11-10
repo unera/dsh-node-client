@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * dshnc — клиент dsh-nodes.
+ * dshnc - the dsh-nodes client.
  *
  *   dshnc help
- *   dshnc connect <url>        заявка на сервере и ожидание одобрения
- *   dshnc daemon [url...]      держать соединения и исполнять команды
- *   dshnc status               что сохранено в ~/.dshnc
- *   dshnc version              версия клиента и версия протокола
+ *   dshnc connect <url>        apply on the server and wait for approval
+ *   dshnc daemon [url...]      hold connections and execute commands
+ *   dshnc status               what is saved in ~/.dshnc
+ *   dshnc version              client version and protocol version
  *
- * Один клиент может работать с несколькими серверами: состояние соединений
- * (токен, курсор, epoch) хранится per URL.
+ * One client can work with several servers: the connection state
+ * (token, cursor, epoch) is kept per URL.
  */
 import { join } from 'node:path'
 import { loadConfig, normalizeUrl } from '../lib/config.mjs'
@@ -61,11 +61,11 @@ async function main (argv) {
     return 0
   }
 
-  // Мастер настройки: меню, а не поток вопросов. Ведёт себя как «первичная
-  // настройка», но годится и для правок: текущие значения он предлагает по
-  // умолчанию, поэтому пустой ответ ничего не меняет.
-  // Событие устройства: кнопка в уведомлении, готовность, что угодно.
-  // Обязательны только сессия и текст — остальное по желанию.
+  // Setup wizard: a menu, not a stream of questions. It behaves like the initial
+  // setup but is also good for edits: it offers the current values as
+  // defaults, so an empty answer changes nothing.
+  // Device event: a button in a notification, readiness, anything.
+  // Only the session and the text are required - the rest is optional.
   if (command === 'send-session') {
     const args = process.argv.slice(3)
     const readFlag = (name) => {
@@ -76,8 +76,8 @@ async function main (argv) {
       return value ?? null
     }
     const rawSession = readFlag('--session')
-    // DSH зовёт сессии `session-<uuid>`; человек знает только uuid, поэтому
-    // префикс добавляем сами, а если он уже есть — не трогаем
+    // DSH calls sessions `session-<uuid>`; the human only knows the uuid, so
+    // we add the prefix ourselves and leave it alone if it is already there
     const session = rawSession && /^[0-9a-f-]{36}$/i.test(rawSession.trim())
       ? `session-${rawSession.trim()}`
       : rawSession
@@ -111,13 +111,13 @@ async function main (argv) {
       out(`отправлено в сессию ${answer.session ?? session} (устройство: ${answer.device ?? 'это'})`)
       return 0
     } catch (error) {
-      // коды переводим в человеческую речь: 404 и 403 человек должен понять сразу
+      // translate the codes into human speech: 404 and 403 must be clear at once
       const map = {
         404: `сессии ${session} больше нет: возможно, её удалили или закрыли`,
         403: 'для этого устройства события выключены в админке',
         400: 'сервер не принял событие: проверь номер сессии и текст',
       }
-      // сервер присылает причину своими словами — она важнее нашей заготовки
+      // the server sends its reason in its own words - it matters more than our stub
       out(error.message && !/^HTTP \d+$/.test(error.message) ? error.message : (map[error.status] ?? 'сервер не ответил'))
       return 1
     }
@@ -224,7 +224,7 @@ async function main (argv) {
     const target = normalizeUrl(url)
     const patch = {}
     for (const pair of pairs) {
-      // делим по первому «=»: значение само может содержать «=» (zenity --width=600)
+      // split at the first "=": the value itself may contain "=" (zenity --width=600)
       const at = pair.indexOf('=')
       if (at < 0) continue
       const key = pair.slice(0, at)
@@ -236,7 +236,7 @@ async function main (argv) {
       if (key === 'base') patch.base = value
       if (key === 'approver') patch.approver = value
       if (key === 'tool') {
-        // внешний инструмент локального апрува: включаем канал и запоминаем команду
+        // external local approval tool: enable the channel and remember the command
         patch.ask = { local: { enabled: true, tool: { type: 'external', command: value } } }
       }
       if (key === 'workdir') patch.workdir = resolve(value)
@@ -250,8 +250,8 @@ async function main (argv) {
     try {
       store.saveSettings({ policy: config.policy })
     } catch (error) {
-      // частая причина — попытка поменять политику изнутри песочницы: писать
-      // в ~/.dshnc там нельзя, и молчать об этом нельзя тоже
+      // a frequent cause is an attempt to change the policy from inside the sandbox: writing
+      // to ~/.dshnc is not allowed there, and staying silent about it is not allowed either
       process.stderr.write(t('err.writeState', { message: error.message }) + '\n')
       return 1
     }
@@ -259,9 +259,9 @@ async function main (argv) {
     return 0
   }
 
-  // Настройки верхнего уровня: то, что относится к самому клиенту, а не к
-  // конкретному серверу. Нужны, чтобы менять поведение без правки файла руками
-  // (и без риска сломать YAML-комментарии).
+  // Top-level settings: what belongs to the client itself and not to a
+  // particular server. They are needed to change behaviour without editing the file by hand
+  // (and without the risk of breaking YAML comments).
   if (command === 'config') {
     const store = openStore()
     const pairs = rest
@@ -304,7 +304,7 @@ async function main (argv) {
       return 0
     }
     for (const row of rows) {
-      // локальное время: аудит читает человек, а не машина
+      // local time: the audit is read by a human, not by a machine
       const when = new Date(row.at).toLocaleString('sv-SE').replace('T', ' ')
       const session = (row.session ?? '—').replace(/^session-/, '').slice(0, 8)
       out(`${when}  ${row.mode}  код ${row.code ?? '—'}  ${session}  ${row.command.replace(/\s+/g, ' ').slice(0, 120)}`)
@@ -358,8 +358,8 @@ async function main (argv) {
     const controller = new AbortController()
     const stop = () => {
       out(t('daemon.stopping'))
-      // фоновые процессы умирают вместе с демоном: иначе после остановки
-      // сервиса на машине остаются работать задания, о которых никто не знает
+      // background processes die with the daemon: otherwise after the service stops
+      // jobs nobody knows about are left running on the machine
       try {
         jobPlugin.stopAll()
       } catch {}
@@ -367,8 +367,8 @@ async function main (argv) {
     }
     process.on('SIGINT', stop)
     process.on('SIGTERM', stop)
-    // SIGHUP обрабатывает сам раннер: он же будит спящий цикл и переобъявляет
-    // API. Здесь ничего не делаем, чтобы не было двух источников правды.
+    // SIGHUP is handled by the runner itself: it also wakes the sleeping loop and
+    // re-announces the API. We do nothing here so there is no second source of truth.
     const plugins = await loadPlugins({ dir: join(home(), 'plugins'), log: (level, message) => out(message) })
     out(t('version.line', { version: VERSION, proto: PROTO }))
     out(t('daemon.servers', { servers: targets.join(', ') }))
