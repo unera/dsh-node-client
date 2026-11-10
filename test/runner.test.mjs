@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { runConcurrently } from '../lib/runner.mjs'
+import { createPool } from '../lib/runner.mjs'
 import { openStore } from '../lib/store.mjs'
 
 
@@ -23,44 +23,72 @@ test('пауза не копит слушателей на AbortSignal', async (
   )
 })
 
-test('approve не блокирует пачку: остальные команды исполняются, пока висит диалог', async () => {
-  let releaseDialog
-  const dialog = new Promise((resolve) => { releaseDialog = resolve })
-  const order = []
-  const commands = [
-    { seq: 1, method: 'approve', args: {} },
-    { seq: 2, method: 'exec', args: {} },
-    { seq: 3, method: 'exec', args: {} },
-  ]
-  const run = async (command) => {
-    if (command.method === 'approve') {
-      await dialog
-      order.push('approve')
-      return
-    }
-    order.push(`exec-${command.seq}`)
-  }
-  // chdir/approve отделены в runBatch; здесь проверяем сам принцип пула
-  const exec = commands.filter((c) => c.method !== 'approve')
-  const dialogRun = run(commands[0])
-  await runConcurrently(exec, run, { concurrency: 5 })
-  assert.deepEqual(order.sort(), ['exec-2', 'exec-3'], 'exec прошли, пока диалог висит')
-  releaseDialog()
-  await dialogRun
-  assert.ok(order.includes('approve'))
+test('пул держит потолок и знает, сколько слотов свободно', async () => {
+  let peak = 0
+  let live = 0
+  const finished = []
+  const pool = createPool({
+    slots: 2,
+    run: async (command) => {
+      live += 1
+      peak = Math.max(peak, live)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      live -= 1
+      finished.push(command.seq)
+    },
+  })
+  for (const seq of [1, 2, 3, 4]) pool.submit({ seq })
+  assert.equal(pool.busy, 2, 'занято ровно столько, сколько слотов')
+  assert.equal(pool.free, 0, 'пока обе задачи идут, свободных слотов нет')
+  await pool.whenIdle()
+  assert.equal(peak, 2, 'одновременно не больше двух команд')
+  assert.deepEqual(finished.sort(), [1, 2, 3, 4], 'все команды дошли до конца')
+  assert.equal(pool.busy, 0)
 })
 
-test('падение одной команды не мешает остальным в пачке', async () => {
+test('whenFree ждёт освобождения хотя бы одного слота, not все сразу', async () => {
+  const pool = createPool({
+    slots: 2,
+    run: (command) => new Promise((resolve) => setTimeout(resolve, command.ms)),
+  })
+  pool.submit({ seq: 1, ms: 10 })
+  pool.submit({ seq: 2, ms: 60 })
+  assert.equal(pool.free, 0)
+  const started = Date.now()
+  await pool.whenFree()
+  const spent = Date.now() - started
+  assert.ok(spent < 50, `ждали один слот, а не оба: ${spent} мс`)
+  assert.equal(pool.free, 1)
+  await pool.whenIdle()
+})
+
+test('whenIdle — это барьер: пусто только когда пусто', async () => {
+  const pool = createPool({
+    slots: 3,
+    run: (command) => new Promise((resolve) => setTimeout(resolve, command.ms)),
+  })
+  pool.submit({ seq: 1, ms: 20 })
+  pool.submit({ seq: 2, ms: 30 })
+  let idle = false
+  const waiting = pool.whenIdle().then(() => { idle = true })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(idle, false, 'пока команды идут, пул не пуст')
+  await waiting
+  assert.equal(idle, true)
+})
+
+test('падение команды не роняет пул и не занимает слот навсегда', async () => {
   const done = []
-  await runConcurrently([
-    { seq: 1 },
-    { seq: 2 },
-    { seq: 3 },
-  ], async (command) => {
-    if (command.seq === 2) throw new Error('плагин упал')
-    done.push(command.seq)
-  }, { concurrency: 2 })
-  assert.deepEqual(done.sort(), [1, 3], 'упавшая команда не должна утащить остальные')
+  const pool = createPool({
+    slots: 2,
+    run: async (command) => {
+      if (command.seq === 2) throw new Error('плагин упал')
+      done.push(command.seq)
+    },
+  })
+  await Promise.all([pool.submit({ seq: 1 }), pool.submit({ seq: 2 }), pool.submit({ seq: 3 })])
+  assert.deepEqual(done.sort(), [1, 3], 'упавшая команда не утащила остальные')
+  assert.equal(pool.busy, 0, 'слот вернулся')
 })
 
 test('pollIdleMs: 0 — периодического опроса нет, будит только кадр', async () => {
