@@ -7,6 +7,7 @@
  * и как маршрутизируются служебные имена.
  */
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -123,4 +124,37 @@ test('разрыв сокета не превращается в опрос: к�
       'после разрыва клиент должен переподключиться и поздороваться заново',
     )
   })
+})
+
+test('повтор после ошибки выдерживает паузу, а не крутится по кадру сокета', async () => {
+  // сервер отвечает 404 HTML-страницей — как прокси, пока плагин не поднялся
+  const attempts = []
+  const server = createServer((req, res) => {
+    attempts.push(Date.now())
+    res.writeHead(404, { 'content-type': 'text/html' })
+    res.end('<html><body>not found</body></html>')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const base = `http://127.0.0.1:${server.address().port}/dsh-nodes`
+  const dir = mkdtempSync(join(tmpdir(), 'dshnc-backoff-'))
+  process.env.DSHNC_HOME = dir
+  openStore().setToken(base, 'test-token')
+  const controller = new AbortController()
+  const printed = []
+  const run = runServer({ url: base, config: { token: 'test-token' }, print: (line) => printed.push(line), signal: controller.signal, plugins: [execPlugin] })
+  try {
+    await waitFor(() => attempts.length >= 2, { timeoutMs: 5000 })
+    const gap = attempts[1] - attempts[0]
+    assert.ok(gap >= 800, `между попытками должна быть пауза, а вышло ${gap} мс`)
+    assert.ok(
+      printed.some((line) => /ответ не JSON|not JSON/i.test(line)),
+      `в логе должно быть сказано про не-JSON ответ, а там: ${printed.join(' | ')}`,
+    )
+  } finally {
+    controller.abort()
+    await run.catch(() => {})
+    await new Promise((resolve) => server.close(() => resolve()))
+    delete process.env.DSHNC_HOME
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
