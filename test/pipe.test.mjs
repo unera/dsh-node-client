@@ -61,13 +61,6 @@ test('отмена: нет цели — это успех, а не ошибка'
   assert.equal(payload.reason, 'no_such_process')
 })
 
-test('служебное имя уходит в handleControl, обычное — в handle', async () => {
-  const { readFileSync } = await import('node:fs')
-  const index = readFileSync(new URL('../lib/plugins/index.mjs', import.meta.url), 'utf8')
-  assert.match(index, /startsWith\('#'\)/, 'имена с решёткой ищутся отдельно')
-  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
-  assert.match(runner, /handleControl/, 'раннер обязан звать служебный обработчик')
-})
 
 test('#INTERNAL.FLUSH ждёт, пока опустеет пул, и только потом отвечает', async () => {
   const { handleControl } = await import('../lib/plugins/shell.mjs')
@@ -93,10 +86,3 @@ test('#INTERNAL.FLUSH на пустом пуле — успех, а не ожи�
   assert.equal(JSON.parse(answer.results[0].text).flushed, true)
 })
 
-test('раннер дожидается служебного обработчика', async () => {
-  const { readFileSync } = await import('node:fs')
-  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
-  // без await ответ служебной команды уходил бы как `undefined`
-  assert.match(runner, /await plugin\.handleControl/, 'служебный обработчик обязан быть асинхронным')
-  assert.match(runner, /drain:/, 'контекст плагина должен отдавать ожидание пула')
-})

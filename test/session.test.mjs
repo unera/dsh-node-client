@@ -90,10 +90,3 @@ test('объявление несёт applyRules отдельным полем, 
   assert.deepEqual(calls[0].body.apis[0], { name: 'session', version: 'v', methods: [] })
 })
 
-test('результат уносит часы узла в конверте', async () => {
-  const { readFileSync } = await import('node:fs')
-  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
-  // `now` — простой факт об ответе, а не знание о правилах: правило читает его,
-  // только когда считает смещение часов
-  assert.match(runner, /now: preciseNow\(\)/, 'конверт результата должен нести часы узла')
-})

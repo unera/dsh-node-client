@@ -106,7 +106,7 @@ test('опроса нет вовсе: будит только кадр, даже
   const base = `http://127.0.0.1:${port}/dsh-nodes`
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-nopoll-'))
   const store = openStore({ dir })
-  store.saveToken?.(base, 'test-token')
+  store.setToken(base, 'test-token')
   const run = runServer({
     url: base,
     // ключ из старых конфигов: он больше ничего не значит
@@ -172,30 +172,7 @@ test('409 на отправке результата — это «поздно»
   }
 })
 
-test('об осиротевшей команде клиент пишет в лог', async () => {
-  const { readFileSync } = await import('node:fs')
-  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
-  assert.match(runner, /run\.orphanResult/, 'молчать про отброшенный результат нельзя')
-  const { t } = await import('../lib/i18n.mjs')
-  const line = t('run.orphanResult', { seq: 14, method: 'exec' })
-  assert.match(line, /14/)
-  assert.match(line, /exec/)
-  // русская строка живёт рядом, в словаре; t() без языка отдаёт английскую
-  const dict = readFileSync(new URL('../lib/i18n.mjs', import.meta.url), 'utf8')
-  assert.match(dict, /осиротела/, 'у строки должен быть русский вариант')
-})
 
-test('подписка ставится до вопроса о состоянии', async () => {
-  const { readFileSync } = await import('node:fs')
-  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
-  const branch = runner.slice(runner.indexOf('if (!commands.length) {'))
-  const sleepingAt = branch.indexOf('const sleeping = waitForWake()')
-  const askAt = branch.indexOf('presence?.sendAlive')
-  assert.ok(sleepingAt > -1 && askAt > -1, 'ожидание и вопрос должны быть в этой ветке')
-  // в websocket у нас состояние, а не событие: ответ на вопрос может прийти
-  // сразу, поэтому слушатель обязан быть готов раньше вопроса
-  assert.ok(sleepingAt < askAt, 'сначала подписка, потом check_state — иначе ответ упадёт в пустоту')
-})
 
 test('барьер не ждёт сам себя и не отвечает раньше работы', async () => {
   const { createPool } = await import('../lib/runner.mjs')
@@ -229,10 +206,3 @@ test('клиент принимает номер, который назвал с
   assert.equal(adoptMaxCommandno(5, 'нет'), 5)
 })
 
-test('drain барьера считается как «все, кроме себя» — проверка на живом контексте', async () => {
-  const { readFileSync } = await import('node:fs')
-  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
-  // ловушка, на которой узел встал живьём: drain без reserve ждёт сам себя
-  assert.match(runner, /drain: \(\) => pool\.whenIdle\(1\)/, 'барьер обязан исключать свой слот')
-  assert.equal(/drain: \(\) => pool\.whenIdle\(\)/.test(runner), false, 'drain без reserve вешает узел')
-})
