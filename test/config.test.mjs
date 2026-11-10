@@ -1,5 +1,5 @@
 /**
- * Конфиг: YAML канонический, JSON читается, комментарии живут.
+ * Config: YAML is canonical, JSON is read, comments survive.
  */
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -14,7 +14,7 @@ function fresh () {
   return { dir, file: join(dir, 'config.yaml'), cleanup: () => rmSync(dir, { recursive: true, force: true }) }
 }
 
-test('старый config.json читается без миграции', () => {
+test('an old config.json is read without migration', () => {
   const { dir, cleanup } = fresh()
   writeFileSync(join(dir, 'config.json'), JSON.stringify({ name: 'nbw', policy: { 'https://x': { max: 'rw' } } }))
   const store = openStore({ dir })
@@ -24,7 +24,7 @@ test('старый config.json читается без миграции', () => 
   cleanup()
 })
 
-test('YAML с комментариями: правка сохраняет комментарии', () => {
+test('YAML with comments: an edit keeps the comments', () => {
   const { dir, file, cleanup } = fresh()
   writeFileSync(file, [
     '# это мой ноутбук',
@@ -44,14 +44,14 @@ test('YAML с комментариями: правка сохраняет ком
   cleanup()
 })
 
-test('битый YAML не превращается в настройки по умолчанию', () => {
+test('broken YAML does not turn into default settings', () => {
   const { dir, file, cleanup } = fresh()
   writeFileSync(file, 'name: [не закрыт\n')
   assert.throws(() => openStore({ dir }), /не смог разобрать|ошибка YAML/)
   cleanup()
 })
 
-test('без конфига клиент стартует с умолчаниями и создаёт YAML', () => {
+test('without a config the client starts with defaults and creates YAML', () => {
   const { dir, file, cleanup } = fresh()
   const store = openStore({ dir })
   assert.equal(store.settings.name, null)
@@ -61,7 +61,7 @@ test('без конфига клиент стартует с умолчания�
   cleanup()
 })
 
-test('настройки верхнего уровня меняются командой, а не правкой файла', async () => {
+test('top-level settings are changed by a command, not by editing the file', async () => {
   const { execFileSync } = await import('node:child_process')
   const { dir, cleanup } = fresh()
   writeFileSync(join(dir, 'config.yaml'), '# мой комментарий\nname: nbw\npingInterval: 30\n')

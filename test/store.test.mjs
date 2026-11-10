@@ -1,5 +1,5 @@
 /**
- * Хранилище клиента: настройки, токены и рантайм — в разных местах.
+ * Client store: settings, tokens and runtime live in different places.
  */
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
@@ -13,7 +13,7 @@ import { openStore } from '../lib/store.mjs'
 const URL_A = 'https://dsh.uvw.ru/dsh-nodes'
 const URL_B = 'http://127.0.0.1:3080/dsh-nodes'
 
-test('настройки, токен и рантайм лежат в разных файлах', () => {
+test('settings, token and runtime live in different files', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-store-'))
   const store = openStore({ dir })
   store.saveSettings({ name: 'nbw', aliases: ['ноут'], workdir: '/home/u/work' })
@@ -38,7 +38,7 @@ test('настройки, токен и рантайм лежат в разны�
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('токены разных серверов не мешают друг другу', () => {
+test('tokens of different servers do not get in each other way', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-store2-'))
   const store = openStore({ dir })
   store.setToken(URL_A, 'token-a')
@@ -55,7 +55,7 @@ test('токены разных серверов не мешают друг др
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('старый config.json с серверами переезжает по местам', () => {
+test('an old config.json with servers migrates into its places', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-store3-'))
   writeFileSync(join(dir, 'config.yaml'), JSON.stringify({
     id: 'x',
@@ -75,7 +75,7 @@ test('старый config.json с серверами переезжает по �
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('исполненные миграции записываются в БД и не повторяются', async () => {
+test('applied migrations are recorded in the DB and are not repeated', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-migr-'))
   const first = openStore({ dir })
   const db1 = new (await import('node:sqlite')).DatabaseSync(join(dir, 'state.sqlite'))
@@ -84,7 +84,7 @@ test('исполненные миграции записываются в БД �
   assert.deepEqual(applied, ['0001_init', '0002_split_config', '0003_session_workdir', '0004_audit'])
   first.close()
 
-  // второй запуск: шагов не прибавилось, повторно ничего не применилось
+  // the second run: no new steps, nothing was applied twice
   const second = openStore({ dir })
   second.close()
   const db2 = new (await import('node:sqlite')).DatabaseSync(join(dir, 'state.sqlite'))
@@ -94,7 +94,7 @@ test('исполненные миграции записываются в БД �
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('credentials.yaml хранит список серверов, а старый формат читается', () => {
+test('credentials.yaml keeps the list of servers, and the old format is still read', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-cred2-'))
   const store = openStore({ dir })
   store.setToken(URL_A, 'token-a')
@@ -105,7 +105,7 @@ test('credentials.yaml хранит список серверов, а стары
   assert.match(text, /^servers:/m, 'должен быть список серверов')
   assert.match(text, /- url: https:\/\/dsh\.uvw\.ru\/dsh-nodes/m)
 
-  // старый формат: карта url → token
+  // the old format: a url -> token map
   writeFileSync(join(dir, 'credentials.yaml'), `${URL_A}: old-token\n`)
   const old = openStore({ dir })
   assert.equal(old.token(URL_A), 'old-token', 'старый формат должен читаться')
@@ -113,7 +113,7 @@ test('credentials.yaml хранит список серверов, а стары
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('аудит хранит команды без песочницы и переживает переоткрытие', () => {
+test('the audit keeps commands without the sandbox and survives reopening', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-audit-'))
   const store = openStore({ dir })
   store.writeAudit({ session: 'session-1', mode: 'full', command: 'touch /etc/x', code: 1 })
@@ -129,7 +129,7 @@ test('аудит хранит команды без песочницы и пер
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('аудит не пухнет от длинных команд', () => {
+test('the audit does not swell from long commands', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-audit2-'))
   const store = openStore({ dir })
   store.writeAudit({ session: 's', mode: 'full', command: 'x'.repeat(10000), code: 0 })

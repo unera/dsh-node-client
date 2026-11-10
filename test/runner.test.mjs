@@ -1,5 +1,5 @@
 /**
- * Демон: паузы и отмена.
+ * Daemon: pauses and cancellation.
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -13,7 +13,7 @@ import { createPool } from '../lib/runner.mjs'
 import { openStore } from '../lib/store.mjs'
 
 
-test('пауза не копит слушателей на AbortSignal', async () => {
+test('pause does not accumulate listeners on AbortSignal', async () => {
   const { sleep } = await import('../lib/runner.mjs')
   const controller = new AbortController()
   for (let i = 0; i < 20; i++) await sleep(1, controller.signal)
@@ -23,7 +23,7 @@ test('пауза не копит слушателей на AbortSignal', async (
   )
 })
 
-test('пул держит потолок и знает, сколько слотов свободно', async () => {
+test('pool keeps its ceiling and knows how many slots are free', async () => {
   let peak = 0
   let live = 0
   const finished = []
@@ -46,7 +46,7 @@ test('пул держит потолок и знает, сколько слот�
   assert.equal(pool.busy, 0)
 })
 
-test('whenFree ждёт освобождения хотя бы одного слота, not все сразу', async () => {
+test('whenFree waits for at least one slot to be released, not for all of them', async () => {
   const pool = createPool({
     slots: 2,
     run: (command) => new Promise((resolve) => setTimeout(resolve, command.ms)),
@@ -62,7 +62,7 @@ test('whenFree ждёт освобождения хотя бы одного сл
   await pool.whenIdle()
 })
 
-test('whenIdle — это барьер: пусто только когда пусто', async () => {
+test('whenIdle is a barrier: empty only when it is really empty', async () => {
   const pool = createPool({
     slots: 3,
     run: (command) => new Promise((resolve) => setTimeout(resolve, command.ms)),
@@ -77,7 +77,7 @@ test('whenIdle — это барьер: пусто только когда пу�
   assert.equal(idle, true)
 })
 
-test('падение команды не роняет пул и не занимает слот навсегда', async () => {
+test('a failed command neither drops the pool nor holds a slot forever', async () => {
   const done = []
   const pool = createPool({
     slots: 2,
@@ -91,11 +91,11 @@ test('падение команды не роняет пул и не заним�
   assert.equal(pool.busy, 0, 'слот вернулся')
 })
 
-test('опроса нет вовсе: будит только кадр, даже если старый конфиг просит опрос', async () => {
+test('there is no polling at all: only a frame wakes it up, even if an old config asks for polling', async () => {
   const { runServer } = await import('../lib/runner.mjs')
   let calls = 0
   const controller = new AbortController()
-  // сервер-пустышка: отвечает на всё, команд не даёт
+  // dummy server: answers everything, hands out no commands
   const server = createServer((req, res) => {
     calls++
     res.writeHead(200, { 'content-type': 'application/json' })
@@ -109,7 +109,7 @@ test('опроса нет вовсе: будит только кадр, даже
   store.setToken(base, 'test-token')
   const run = runServer({
     url: base,
-    // ключ из старых конфигов: он больше ничего не значит
+    // a key from old configs: it means nothing any more
     config: { pollIdleMs: 5000, token: 'test-token' },
     print: () => {},
     signal: controller.signal,
@@ -125,16 +125,16 @@ test('опроса нет вовсе: будит только кадр, даже
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('ворота пробуждения: кадр до ожидания не теряется', async () => {
+test('wakeup gate: a frame that arrives before the wait is not lost', async () => {
   const { createWakeGate } = await import('../lib/runner.mjs')
   const gate = createWakeGate()
-  // кадр пришёл раньше, чем цикл собрался спать — это и был мёртвый лок
+  // the frame arrived before the loop went to sleep - that was the deadlock
   gate.nudge()
   assert.equal(gate.take(), true, 'событие должно запомниться')
   assert.equal(gate.take(), false, 'и использоваться ровно один раз')
 })
 
-test('ворота пробуждения: ожидание будится кадром', async () => {
+test('wakeup gate: the wait is woken by a frame', async () => {
   const { createWakeGate } = await import('../lib/runner.mjs')
   const gate = createWakeGate()
   let woke = false
@@ -147,7 +147,7 @@ test('ворота пробуждения: ожидание будится ка�
   assert.equal(gate.take(), true, 'после пробуждения отметка ждёт следующего ожидания')
 })
 
-test('ворота пробуждения: два кадра подряд не съедаются', async () => {
+test('wakeup gate: two frames in a row are not swallowed', async () => {
   const { createWakeGate } = await import('../lib/runner.mjs')
   const gate = createWakeGate()
   gate.nudge()
@@ -156,7 +156,7 @@ test('ворота пробуждения: два кадра подряд не �
   assert.equal(gate.take(), false, 'лишний кадр — не повод крутиться вечно')
 })
 
-test('409 на отправке результата — это «поздно», а не ошибка', async () => {
+test('409 on result submission means "too late", not an error', async () => {
   const realFetch = globalThis.fetch
   globalThis.fetch = async () => ({
     ok: false,
@@ -174,16 +174,16 @@ test('409 на отправке результата — это «поздно»
 
 
 
-test('барьер не ждёт сам себя и не отвечает раньше работы', async () => {
+test('the barrier does not wait for itself and does not answer before the work is done', async () => {
   const { createPool } = await import('../lib/runner.mjs')
 
-  // пул 1: барьер один — ждать нечего, отвечает сразу
+  // pool 1: a single barrier - nothing to wait for, it answers at once
   const solo = createPool({ slots: 1, run: async (command) => { if (command.method === '#F') await solo.whenIdle(1) } })
   const started = Date.now()
   await Promise.race([solo.submit({ seq: 1, method: '#F' }), new Promise((r) => setTimeout(r, 1000))])
   assert.ok(Date.now() - started < 500, 'барьер не должен ждать самого себя')
 
-  // пул 2: барьер обязан пропустить вперёд долгую работу и дождаться её
+  // pool 2: the barrier must let long work go first and wait for it
   const order = []
   const pool = createPool({ slots: 2, run: async (command) => {
     if (command.method === '#F') { await pool.whenIdle(1); order.push('flush') }
@@ -195,10 +195,10 @@ test('барьер не ждёт сам себя и не отвечает ран
   assert.deepEqual(order, ['exec', 'flush'], 'барьер отвечает только после работы до него')
 })
 
-test('клиент принимает номер, который назвал сервер — так закрываются дырки', async () => {
+test('the client accepts the number the server named - that is how the gaps get closed', async () => {
   const { adoptMaxCommandno } = await import('../lib/runner.mjs')
-  // сервер выдал 1..4 и сжёг 5 на отменённую команду: максимум по полученным — 4,
-  // но сервер называет 5, и клиент обязан это принять
+  // the server issued 1..4 and burned 5 on a cancelled command: the maximum among the received ones is 4,
+  // but the server names 5, and the client must accept it
   assert.equal(adoptMaxCommandno(4, 5), 5)
   assert.equal(adoptMaxCommandno(57, 54), 57, 'назад номер не едет: приоритетная отмена приходит раньше низких')
   assert.equal(adoptMaxCommandno(null, 5), 5, 'первый ответ тоже принимается')

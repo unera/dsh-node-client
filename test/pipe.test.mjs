@@ -3,31 +3,31 @@ import { test } from 'node:test'
 
 import { pipeArgs, pipeOutcome, stderrTail, PIPE_LIMITS } from '../lib/pipe.mjs'
 
-test('аргументы пайпа: нужны команда и путь на сервере', () => {
+test('pipe arguments: a command and a path on the server are required', () => {
   assert.throws(() => pipeArgs({ hostPath: '/tmp/a' }, 'from'), /команда/)
   assert.throws(() => pipeArgs({ command: 'ls' }, 'from'), /hostPath/)
   assert.throws(() => pipeArgs({ command: 'ls' }, 'to'), /hostPath/)
 })
 
-test('таймаут: по умолчанию нет, заданный не урезается', () => {
-  // без ограничения: бэкап может идти долго, и потолок тут только мешает
+test('timeout: none by default, an explicit one is not trimmed', () => {
+  // no limit: a backup can run long, and a ceiling only gets in the way here
   assert.equal(pipeArgs({ command: 'x', hostPath: '/y' }, 'from').timeoutMs, 0)
   assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: 5 }, 'from').timeoutMs, 5000)
   assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeoutMs: 7000 }, 'from').timeoutMs, 7000)
-  // сутки — законное значение, ничего не режем
+  // a day is a legitimate value, we do not trim anything
   assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: 86_400 }, 'from').timeoutMs, 86_400_000)
-  // ноль и отрицательное — без ограничения
+  // zero and negative mean no limit
   assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: 0 }, 'from').timeoutMs, 0)
   assert.equal(pipeArgs({ command: 'x', hostPath: '/y', timeout: -1 }, 'from').timeoutMs, 0)
 })
 
-test('успех: код 0 — файл годен, даже если вывод пустой', () => {
+test('success: code 0 means the file is good, even if the output is empty', () => {
   const outcome = pipeOutcome({ exitCode: 0, bytes: 0, stderrTail: '' }, 'from')
   assert.equal(outcome.ok, true)
   assert.equal(outcome.bytes, 0)
 })
 
-test('упал скрипт: различаем код выхода и хвост stderr', () => {
+test('script failed: we tell the exit code from the stderr tail', () => {
   const outcome = pipeOutcome({ exitCode: 2, bytes: 10, stderrTail: 'нет такого файла' }, 'from')
   assert.equal(outcome.ok, false)
   assert.equal(outcome.code, 'exit_nonzero')
@@ -35,24 +35,24 @@ test('упал скрипт: различаем код выхода и хвос�
   assert.match(outcome.message, /нет такого файла/)
 })
 
-test('убит сигналом и таймаут — разные причины', () => {
+test('killed by a signal and a timeout are different reasons', () => {
   assert.equal(pipeOutcome({ exitCode: null, signal: 'SIGKILL', bytes: 0 }, 'from').code, 'killed_by_signal')
   assert.equal(pipeOutcome({ exitCode: null, timedOut: true, bytes: 5 }, 'from').code, 'timeout')
 })
 
-test('в направлении to пустой проход — это остановка приёмником, а не ошибка', () => {
+test('in the to direction an empty pass means the receiver stopped, not an error', () => {
   const outcome = pipeOutcome({ exitCode: 0, bytes: 0 }, 'to')
   assert.equal(outcome.ok, true)
   assert.equal(outcome.stoppedBySink, true)
 })
 
-test('хвост stderr ограничен', () => {
+test('the stderr tail is bounded', () => {
   const long = 'x'.repeat(10_000)
   assert.equal(stderrTail(long).length, PIPE_LIMITS.stderrTail)
   assert.equal(stderrTail('коротко'), 'коротко')
 })
 
-test('отмена: нет цели — это успех, а не ошибка', async () => {
+test('cancellation: no target is a success, not an error', async () => {
   const { cancelRunning } = await import('../lib/plugins/pipe-run.mjs')
   const outcome = cancelRunning(999)
   assert.equal(outcome.ok, true)
@@ -62,7 +62,7 @@ test('отмена: нет цели — это успех, а не ошибка'
 })
 
 
-test('#INTERNAL.FLUSH ждёт, пока опустеет пул, и только потом отвечает', async () => {
+test('#INTERNAL.FLUSH waits until the pool is empty and only then answers', async () => {
   const { handleControl } = await import('../lib/plugins/shell.mjs')
   let drained = false
   let release
@@ -79,7 +79,7 @@ test('#INTERNAL.FLUSH ждёт, пока опустеет пул, и тольк�
   assert.equal(JSON.parse(answer.results[0].text).flushed, true)
 })
 
-test('#INTERNAL.FLUSH на пустом пуле — успех, а не ожидание', async () => {
+test('#INTERNAL.FLUSH on an empty pool is a success, not a wait', async () => {
   const { handleControl } = await import('../lib/plugins/shell.mjs')
   const answer = await handleControl({ method: '#INTERNAL.FLUSH', args: {} }, { drain: async () => {} })
   assert.equal(answer.ok, true)

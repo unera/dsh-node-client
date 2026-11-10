@@ -1,5 +1,5 @@
 /**
- * Вопрос человеку как служебная команда: `#INTERNAL.APPROVE` и отмена по номеру.
+ * A question to the human as an internal command: `#INTERNAL.APPROVE` and cancellation by number.
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -10,7 +10,7 @@ import { cancelRunning } from '../lib/running.mjs'
 const ctx = (behaviour) => ({ approver: { command: 'askpass', run: (options) => behaviour(options) } })
 const payload = (outcome) => JSON.parse(outcome.results[0].text)
 
-test('согласие человека — approved', async () => {
+test('human consent is approved', async () => {
   const out = await handleApproveCommand({ seq: 1, args: { id: 'a', text: 'можно?' }, timeout: 60 },
     ctx(async ({ signal }) => {
       assert.equal(signal.aborted, false, 'диалог получает живой сигнал')
@@ -21,13 +21,13 @@ test('согласие человека — approved', async () => {
   assert.equal(activeApprovals(), 0, 'после ответа диалог снят с учёта')
 })
 
-test('отказ человека — cancelled, а не ошибка', async () => {
+test('human refusal is cancelled, not an error', async () => {
   const out = await handleApproveCommand({ seq: 2, args: { id: 'b', text: 'нет?' }, timeout: 60 }, ctx(async () => false))
   assert.equal(out.code, 'cancelled')
   assert.equal(payload(out).approved, false)
 })
 
-test('#INTERNAL.CANCEL по номеру закрывает висящий вопрос', async () => {
+test('#INTERNAL.CANCEL by number closes a hanging question', async () => {
   const pending = handleApproveCommand({ seq: 3, args: { id: 'c', text: '?' }, timeout: 600 },
     ctx(({ signal }) => new Promise((resolve, reject) => {
       signal.addEventListener('abort', () => reject(Object.assign(new Error('отменён'), { code: 'cancelled' })))
@@ -36,7 +36,7 @@ test('#INTERNAL.CANCEL по номеру закрывает висящий во�
   await new Promise((resolve) => setTimeout(resolve, 10))
   assert.equal(activeApprovals(), 1, 'вопрос висит и ждёт человека')
 
-  // ровно так приходит отмена: командой по номеру
+  // this is exactly how the cancellation arrives: as a command by number
   const cancelled = cancelRunning(3)
   assert.equal(payload(cancelled).cancelled, true, 'CANCEL обязан найти диалог, а не пустоту')
 
@@ -46,7 +46,7 @@ test('#INTERNAL.CANCEL по номеру закрывает висящий во�
   assert.equal(activeApprovals(), 0)
 })
 
-test('смена поколения сервера закрывает открытые вопросы', async () => {
+test('a change of the server generation closes open questions', async () => {
   let aborted = 0
   const dialogs = [4, 5].map((seq) => handleApproveCommand({ seq, args: { id: String(seq), text: '?' }, timeout: 600 },
     ctx(({ signal }) => new Promise((resolve, reject) => {
@@ -63,7 +63,7 @@ test('смена поколения сервера закрывает откры
   assert.equal(activeApprovals(), 0)
 })
 
-test('нет инструмента апрува — честная ошибка, а не тишина', async () => {
+test('no approval tool means an honest error, not silence', async () => {
   const out = await handleApproveCommand({ seq: 6, args: { id: 'x', text: '?' } }, { approver: { command: null } })
   assert.equal(out.ok, false)
   assert.equal(out.code, 'no_local_approver')

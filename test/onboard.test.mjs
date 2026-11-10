@@ -1,12 +1,12 @@
 /**
- * Мастер настройки: меню, значения по умолчанию, запись только по согласию.
+ * Setup wizard: menu, default values, writing only with consent.
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { askAccess, askConnection, renderConfig, runOnboard } from '../lib/onboard.mjs'
 
-/** Ответы по очереди, как будто их вводят руками. */
+/** Answers one by one, as if they were typed by hand. */
 function asker (answers) {
   const queue = [...answers]
   const asked = []
@@ -17,7 +17,7 @@ function asker (answers) {
   return { ask, asked }
 }
 
-test('пустой ответ оставляет текущее значение и оно видно в подсказке', async () => {
+test('an empty answer keeps the current value and it is visible in the prompt', async () => {
   const { ask, asked } = asker(['', '', '', '', '', ''])
   const config = { name: 'nbw', aliases: ['ноут'], workdir: '/w', roots: ['/w'] }
   const patch = await askAccess({ ask, config, policy: { max: 'full', base: 'rw', approver: 'none' }, url: 'https://x' })
@@ -28,7 +28,7 @@ test('пустой ответ оставляет текущее значение
   assert.match(asked[0], /\[nbw\]/, 'текущее значение должно быть в подсказке')
 })
 
-test('ответы меняют значения, approver=local спрашивает команду вопроса', async () => {
+test('answers change the values, approver=local asks for the question command', async () => {
   const { ask, asked } = asker(['ноут2', 'a, b', '/work', '/work, /tmp', 'full', 'rw', 'local', 'zenity --text-info'])
   const patch = await askAccess({ ask, config: {}, policy: {}, url: 'https://x' })
   assert.equal(patch.name, 'ноут2')
@@ -40,16 +40,16 @@ test('ответы меняют значения, approver=local спрашив�
   assert.ok(asked.some((question) => /Команда вопроса/.test(question)))
 })
 
-test('связь: пустой ответ сохраняет прежнее, ноль остаётся нулём', async () => {
+test('connection: an empty answer keeps the previous one, zero stays zero', async () => {
   const { ask } = asker(['', ''])
   const patch = await askConnection({ ask, print: () => {}, config: { pingInterval: 0, maxPingIntervalFactor: 0 } })
-  // про опрос больше не спрашиваем: его нет вовсе, будит только сокет
+  // we no longer ask about polling: it does not exist at all, only the socket wakes it up
   assert.equal('pollIdleMs' in patch, false)
   assert.equal(patch.pingInterval, 0)
   assert.equal(patch.maxPingIntervalFactor, 0)
 })
 
-test('связь: в новом конфиге предлагаются 15 с и растяжение 10', async () => {
+test('connection: the new config offers 15 s and a stretch of 10', async () => {
   const asked = []
   const ask = async (question) => { asked.push(question); return '' }
   const patch = await askConnection({ ask, print: () => {}, config: {} })
@@ -58,11 +58,11 @@ test('связь: в новом конфиге предлагаются 15 с и
   assert.equal('pollIdleMs' in patch, false, 'опроса нет, и настройки для него нет')
 })
 
-test('меню: правка не записывается без согласия', async () => {
+test('menu: an edit is not written without consent', async () => {
   const saved = []
   let config = { name: 'nbw', policy: { 'https://x': {} } }
-  // 1 → четыре ответа на вопросы доступа → «n» на подтверждение → 0 выход
-  // 1 → имя + шесть пустых ответов (прочие поля) → «n» на подтверждение → 0
+  // 1 -> four answers to the access questions -> "n" to the confirmation -> 0 to exit
+  // 1 -> name + six empty answers (the other fields) -> "n" to the confirmation -> 0
   const { ask } = asker(['1', 'новое', '', '', '', '', '', 'n', '0'])
   await runOnboard({
     ask,
@@ -74,7 +74,7 @@ test('меню: правка не записывается без согласи
   assert.deepEqual(saved, [], 'без «y» ничего не сохраняем')
 })
 
-test('меню: согласие сохраняет один раз', async () => {
+test('menu: consent saves once', async () => {
   const saved = []
   let config = { name: 'nbw', policy: { 'https://x': {} } }
   const { ask } = asker(['1', 'новое', '', '', '', '', '', '', 'y', '0'])
@@ -89,7 +89,7 @@ test('меню: согласие сохраняет один раз', async () =
   assert.equal(config.name, 'новое')
 })
 
-test('renderConfig не показывает служебные поля', () => {
+test('renderConfig does not show internal fields', () => {
   const text = renderConfig({ name: 'nbw', servers: { a: 1 }, id: 'x' })
   assert.doesNotMatch(text, /servers/)
   assert.doesNotMatch(text, /"id"/)

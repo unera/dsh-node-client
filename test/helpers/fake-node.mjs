@@ -1,9 +1,9 @@
 /**
- * Фейковый сервер dsh-nodes для поведенческих тестов клиента.
+ * Fake dsh-nodes server for the client behaviour tests.
  *
- * Поднимает HTTP и WebSocket на одном порту и даёт тесту управлять тем, что
- * происходит: какие команды выдаются, как отвечают на результат, что сервер
- * шлёт в сокет. Так проверяется поведение, а не строки в исходнике.
+ * Brings up HTTP and WebSocket on one port and lets the test control what
+ * happens: which commands are handed out, how results are answered, what the server
+ * sends into the socket. That is how behaviour is checked, not strings in the source.
  *
  * @module dsh-node-client/test/helpers/fake-node
  */
@@ -12,13 +12,13 @@ import { WebSocketServer } from 'ws'
 
 /**
  * @param {object} [options]
- * @param {object[]} [options.commands] очередь выдаваемых команд (забираются по одной за запрос)
- * @param {number} [options.resultStatus] код ответа на отправку результата (409 — «опоздал»)
- * @param {boolean} [options.pushOnCheckState] отвечать `state` сразу на `check_state`
+ * @param {object[]} [options.commands] queue of commands to hand out (fetched one per request)
+ * @param {number} [options.resultStatus] response code for result submission (409 means "too late")
+ * @param {boolean} [options.pushOnCheckState] answer `state` right to `check_state`
  */
 export async function startFakeNode ({ commands = [], resultStatus = 200, pushOnCheckState = false } = {}) {
   const calls = { commands: [], results: [], frames: [], announce: 0, state: 0, requests: [] }
-  // «сервер сломался»: плагин за прокси отдаёт HTML, а не JSON
+  // "the server is broken": the plugin behind a proxy serves HTML instead of JSON
   let broken = null
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1')
@@ -68,8 +68,8 @@ export async function startFakeNode ({ commands = [], resultStatus = 200, pushOn
 
   const wss = new WebSocketServer({ noServer: true })
   server.on('upgrade', (req, socket, head) => {
-    // «сломанный» сервер не поднимает и сокет: именно так ведёт себя прокси,
-    // который отдаёт HTML вместо апгрейда — соединение рвётся сразу
+    // the "broken" server does not bring up the socket either: this is how a proxy behaves
+    // when it serves HTML instead of an upgrade - the connection drops at once
     if (broken) {
       socket.destroy()
       return
@@ -100,16 +100,16 @@ export async function startFakeNode ({ commands = [], resultStatus = 200, pushOn
   return {
     url: `http://127.0.0.1:${port}/dsh-nodes`,
     calls,
-    /** Начать отвечать 404 и HTML, как прокси без поднятого плагина. */
+    /** Start answering 404 and HTML, like a proxy without a running plugin. */
     breakHttp: (status = 404) => { broken = status },
-    /** Разорвать все сокеты: проверяем переподключение, а не опрос. */
+    /** Drop all sockets: we check reconnection, not polling. */
     dropSockets: () => {
       for (const client of wss.clients) client.terminate()
     },
     commands,
     close: async () => {
-      // сначала рвём сокеты, потом сервер: ждать `wss.close()` нельзя —
-      // он ждёт, пока закроются клиенты, а клиент в этот момент переподключается
+      // drop the sockets first, then the server: `wss.close()` cannot be awaited -
+      // it waits for clients to close, while the client is reconnecting at that very moment
       for (const client of wss.clients) client.terminate()
       wss.close()
       server.closeAllConnections?.()
@@ -118,7 +118,7 @@ export async function startFakeNode ({ commands = [], resultStatus = 200, pushOn
   }
 }
 
-/** Подождать, пока условие выполнится (без sleep-хаков на фиксированное время). */
+/** Wait until the condition holds (no sleep hacks with a fixed delay). */
 export async function waitFor (check, { timeoutMs = 3000, stepMs = 20 } = {}) {
   const started = Date.now()
   while (Date.now() - started < timeoutMs) {

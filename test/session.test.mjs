@@ -2,27 +2,27 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 
-test('session.ping отвечает ok даже без хранилища сессий', async () => {
+test('session.ping answers ok even without a session store', async () => {
   const session = await import('../lib/plugins/session.mjs')
   const answer = await session.handle({ method: 'ping', args: {} }, {})
   assert.equal(answer.ok, true)
   const payload = JSON.parse(answer.results[0].text)
-  // своих замеров узел больше не делает: их считает правило timing на сервере
+  // the node no longer takes its own measurements: they are computed by the timing rule on the server
   assert.equal(payload.pong ?? null, null)
   assert.equal(typeof payload.upSeconds, 'number')
   assert.equal(payload.platform, process.platform)
   assert.match(payload.version, /^desktop-\d+\.\d+\.\d+$/)
 })
 
-test('session.ping объявлен в API и версия контракта поднята', async () => {
+test('session.ping is declared in the API and the contract version is bumped', async () => {
   const session = await import('../lib/plugins/session.mjs')
   const api = session.api()
   assert.ok(api.methods.some((method) => method.method === 'ping'))
-  // версия API = версия клиента: разные платформы не сталкиваются по ключу
+  // the API version equals the client version: different platforms do not collide on the key
   assert.match(api.version, /^desktop-\d+\.\d+\.\d+$/, 'версия API должна быть версией клиента')
 })
 
-test('session.id отдаёт номер сессии, в которой пришла команда', async () => {
+test('session.id returns the number of the session the command came in', async () => {
   const session = await import('../lib/plugins/session.mjs')
   const answer = await session.handle(
     { method: 'id', args: {}, session: 'session-a7fd5961-4be0-4120-a7e6-a4f3507cac11' },
@@ -32,23 +32,23 @@ test('session.id отдаёт номер сессии, в которой при�
   assert.equal(payload.session, 'session-a7fd5961-4be0-4120-a7e6-a4f3507cac11')
 })
 
-test('session.id без сессии возвращает null, а не выдумку', async () => {
+test('session.id without a session returns null, not an invention', async () => {
   const session = await import('../lib/plugins/session.mjs')
   const answer = await session.handle({ method: 'id', args: {} }, {})
   const payload = JSON.parse(answer.results[0].text)
   assert.equal(payload.session, null)
 })
 
-test('session.chdir просит барьер flushAround — отдельным списком правил', async () => {
+test('session.chdir asks for the flushAround barrier via a separate rules list', async () => {
   const session = await import('../lib/plugins/session.mjs')
   const api = session.api()
-  // в самом объявлении метода правил нет: они едут в announce.applyRules
+  // the method declaration itself has no rules: they travel in announce.applyRules
   for (const method of api.methods) {
     assert.equal(method.special ?? null, null, `${method.method}: правило не должно жить в apidef`)
   }
   assert.deepEqual(api.rules, [
     { method: 'chdir', rule: 'flushAround' },
-    // пинг мерит сервер: длительность по своим отметкам, смещение — по часам узла
+    // the ping is measured by the server: duration by its own marks, offset by the node clock
     {
       method: 'ping',
       rule: 'timing',
@@ -57,7 +57,7 @@ test('session.chdir просит барьер flushAround — отдельным
   ])
 })
 
-test('правила плагинов собираются в announce.applyRules с именем API', async () => {
+test('plugin rules are collected into announce.applyRules with the API name', async () => {
   const { rulesOf } = await import('../lib/plugins/index.mjs')
   const plugins = [
     { api: { name: 'session', rules: [{ method: 'chdir', rule: 'flushAround' }] } },
@@ -70,7 +70,7 @@ test('правила плагинов собираются в announce.applyRule
   ])
 })
 
-test('объявление несёт applyRules отдельным полем, а не в apidef', async () => {
+test('the announcement carries applyRules as a separate field, not inside apidef', async () => {
   const calls = []
   const realFetch = globalThis.fetch
   globalThis.fetch = async (url, init) => {
@@ -86,7 +86,7 @@ test('объявление несёт applyRules отдельным полем, 
     globalThis.fetch = realFetch
   }
   assert.deepEqual(calls[0].body.applyRules, [{ api: 'session', method: 'chdir', rule: 'flushAround' }])
-  // в самом объявлении API служебных полей нет
+  // the API announcement itself has no internal fields
   assert.deepEqual(calls[0].body.apis[0], { name: 'session', version: 'v', methods: [] })
 })
 

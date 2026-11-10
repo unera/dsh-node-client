@@ -1,5 +1,5 @@
 /**
- * Автозапуск: текст systemd-юнита и диалог мастера.
+ * Autostart: the text of the systemd unit and the wizard dialogue.
  */
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -25,7 +25,7 @@ before(() => {
 })
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-test('user-юнит без графики — обычный default.target', () => {
+test('user unit without graphics - a plain default.target', () => {
   const text = renderUnit({ scope: 'user', execStart: '/usr/bin/dshnc' })
   assert.match(text, /ExecStart=\/usr\/bin\/dshnc daemon/)
   assert.match(text, /WantedBy=default\.target/)
@@ -35,33 +35,33 @@ test('user-юнит без графики — обычный default.target', ()
   assert.match(text, /Environment=DSHNC_SHELL=\/bin\/bash/)
 })
 
-test('user-юнит внутри графической сессии импортирует окружение', () => {
+test('user unit inside a graphical session imports the environment', () => {
   const text = renderUnit({ scope: 'user', execStart: '/usr/bin/dshnc', graphical: true })
   assert.match(text, /After=graphical-session\.target/)
   assert.match(text, /WantedBy=graphical-session\.target/)
   assert.match(text, /ExecStartPre=-\/bin\/sh -c 'systemctl --user import-environment DISPLAY XAUTHORITY/)
 })
 
-test('системный юнит несёт User= и HOME=', () => {
+test('system unit carries User= and HOME=', () => {
   const text = renderUnit({ scope: 'system', execStart: '/usr/bin/dshnc', user: 'dshnc', home: '/home/dshnc' })
   assert.match(text, /User=dshnc/)
   assert.match(text, /Environment=HOME=\/home\/dshnc/)
   assert.match(text, /WantedBy=default\.target/)
 })
 
-test('путь юнита зависит от области', () => {
+test('the unit path depends on the scope', () => {
   assert.match(unitPath('user', 'dshnc', '/tmp/x'), /^\/tmp\/x\/dshnc\.service$/)
   assert.match(unitPath('system', 'dshnc', '/tmp/x'), /^\/tmp\/x\/dshnc\.service$/)
 })
 
-test('права на создание пользователей', () => {
+test('rights to create users', () => {
   assert.equal(canCreateUsers({ uid: 0 }), true)
   assert.equal(canCreateUsers({ uid: 1000, hasSudo: true }), true)
   assert.equal(canCreateUsers({ uid: 1000, hasSudo: false }), false)
   assert.match(createUserCommand('dshnc'), /^sudo useradd .*dshnc$/)
 })
 
-test('мастер: user-область, ответы ложатся в юнит', async () => {
+test('wizard: user scope, the answers land in the unit', async () => {
   const answers = ['nbw', 'nbw, ноутбук', 'user', 'n']
   const lines = []
   const result = await runAutostart({
@@ -80,7 +80,7 @@ test('мастер: user-область, ответы ложатся в юнит
   assert.ok(lines.some((line) => /systemctl --user enable/.test(line)))
 })
 
-test('мастер: системная область с отдельным пользователем', async () => {
+test('wizard: system scope with a dedicated user', async () => {
   const answers = ['lamp', '', 'system', 'y', 'dshnc']
   const lines = []
   const result = await runAutostart({
@@ -99,19 +99,19 @@ test('мастер: системная область с отдельным по
   assert.equal(result.stateDir, '/home/dshnc/.dshnc')
 })
 
-test('ответы мастера применяются к конфигу', () => {
+test('the wizard answers are applied to the config', () => {
   const config = { name: 'host' }
   applyAutostartAnswers(config, { name: 'nbw', aliases: ['nbw', 'laptop'] })
   assert.equal(config.name, 'nbw')
   assert.deepEqual(config.aliases, ['nbw', 'laptop'])
 })
 
-test('каталог состояния зависит от области', () => {
+test('the state directory depends on the scope', () => {
   assert.match(stateDirFor({ scope: 'system', user: 'dshnc', home: '/home/dshnc' }), /^\/home\/dshnc\/\.dshnc$/)
   assert.match(stateDirFor({ scope: 'user' }), /\.dshnc$/)
 })
 
-test('ExecStart для .mjs несёт интерпретатор', async () => {
+test('ExecStart for .mjs carries the interpreter', async () => {
   const { resolveExecStart } = await import('../lib/autostart.mjs')
   assert.equal(resolveExecStart('/usr/local/bin/dshnc', '/usr/bin/node'), '/usr/local/bin/dshnc')
   assert.equal(
@@ -120,7 +120,7 @@ test('ExecStart для .mjs несёт интерпретатор', async () => 
   )
 })
 
-test('пользователь создаётся сам, когда есть права', async () => {
+test('the user is created automatically when there are rights', async () => {
   const { createUser } = await import('../lib/autostart.mjs')
   const calls = []
   const run = (file, args) => {
@@ -135,7 +135,7 @@ test('пользователь создаётся сам, когда есть п
   assert.equal(calls.length, 0, 'без прав ничего не запускаем')
 })
 
-test('мастер: без прав печатает команду и ждёт пользователя', async () => {
+test('wizard: without rights it prints the command and waits for the user', async () => {
   const answers = ['lamp', '', 'system', 'y', 'dshnc-new-user', '']
   const lines = []
   const result = await runAutostart({
@@ -152,7 +152,7 @@ test('мастер: без прав печатает команду и ждёт 
   assert.ok(lines.some((line) => /useradd/.test(line)), 'должна быть готовая команда для человека')
 })
 
-test('мастер спрашивает про перенос токена, когда он есть', async () => {
+test('wizard asks about moving the token when there is one', async () => {
   const answers = ['lamp', '', 'system', 'y', 'dshnc-copy', 'y']
   const lines = []
   const asked = []
@@ -177,7 +177,7 @@ test('мастер спрашивает про перенос токена, ко
   assert.equal(result.copied, true, 'перенос должен удаться при подменённом run')
 })
 
-test('без токена мастер не предлагает перенос, а говорит что делать', async () => {
+test('without a token the wizard does not offer a move but says what to do', async () => {
   const answers = ['lamp', '', 'system', 'y', 'dshnc-notoken']
   const lines = []
   const result = await runAutostart({
@@ -193,7 +193,7 @@ test('без токена мастер не предлагает перенос,
   assert.ok(lines.some((line) => /connect <link>|connect <ссылк|connect <链接/.test(line)))
 })
 
-test('в юните есть PATH с каталогом node', () => {
+test('the unit has a PATH with the node directory', () => {
   const text = renderUnit({
     scope: 'user',
     execStart: '/opt/node/bin/node /opt/dshnc/bin/dshnc.mjs',
@@ -203,13 +203,13 @@ test('в юните есть PATH с каталогом node', () => {
   assert.match(text, /^ExecStart=\/opt\/node\/bin\/node \/opt\/dshnc\/bin\/dshnc\.mjs daemon$/m)
 })
 
-test('импорт окружения не сыпет предупреждениями о незаданных переменных', () => {
+test('environment import does not spam warnings about unset variables', () => {
   const text = renderUnit({ scope: 'user', execStart: '/usr/bin/dshnc', graphical: true })
   assert.match(text, /ExecStartPre=-\/bin\/sh -c 'systemctl --user import-environment/)
   assert.match(text, /2>\/dev\/null \|\| true/)
 })
 
-test('юнит умеет reload через SIGHUP', async () => {
+test('the unit can reload via SIGHUP', async () => {
   const { renderUnit } = await import('../lib/autostart.mjs')
   const text = renderUnit({ scope: 'user', execStart: '/usr/bin/dshnc', args: ['daemon'], graphical: false })
   assert.match(text, /ExecReload=\/bin\/kill -HUP \$MAINPID/)

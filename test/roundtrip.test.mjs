@@ -1,7 +1,7 @@
 /**
- * Сквозной тест клиента: настоящий цикл `runServer` против настоящего сервера
- * плагина. Проверяем то, ради чего всё писалось: команда доезжает до машины,
- * bash исполняется, результат возвращается ожидающему.
+ * End-to-end test of the client: the real `runServer` loop against a real server
+ * plugin. We check what it was all written for: a command reaches the machine,
+ * bash is executed, the result comes back to the one waiting for it.
  */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
@@ -22,9 +22,9 @@ import { openStore } from '../lib/store.mjs'
 import { setLang } from '../lib/i18n.mjs'
 import { runServer } from '../lib/runner.mjs'
 
-// Сквозные тесты поднимают демон, соединяются по websocket и исполняют команды
-// в песочнице: в раннере GitHub нет bwrap, поэтому здесь они пропускаются, а
-// локально и на живом хосте идут полностью.
+// End-to-end tests bring up the daemon, connect over websocket and execute commands
+// inside the sandbox: the GitHub runner has no bwrap, so here they are skipped, while
+// locally and on a live host they run in full.
 const skipInCi = process.env.CI ? { skip: 'нужен bwrap и живой демон' } : {}
 
 
@@ -72,11 +72,11 @@ after(() => {
   delete process.env.DSHNC_HOME
 })
 
-// Админка больше не живёт на публичном префиксе: операции вызываются
-// функциями плагина с тем же store и queue, что и у поднятого сервера.
+// The admin UI no longer lives on a public prefix: operations are invoked
+// by plugin functions with the same store and queue as the server that is up.
 const deps = () => ({ store, queue, config: NODES_CONFIG, prefix: '/dsh-nodes', origin: base.replace(/\/dsh-nodes$/, '') })
 
-/** Свежий снимок состояния сервера: демон пишет в sqlite, читаем заново. */
+/** A fresh snapshot of the server state: the daemon writes to sqlite, we read it again. */
 function live (url) {
   const store = openStore()
   const state = store.readState(url)
@@ -97,18 +97,18 @@ async function admin (path, options = {}) {
   throw new Error(`нет админ-маршрута ${path}`)
 }
 
-test('клиент регистрируется сам, объявляет shell и исполняет команду', skipInCi, async () => {
+test('the client registers itself, announces shell and executes a command', skipInCi, async () => {
   const lines = []
-  // 1. клиент уходит в цикл: заявка, ожидание, объявление
+  // 1. the client goes into the loop: application, waiting, announcement
   const running = runServer({
     url: base,
     config,
     print: (line) => lines.push(line),
     signal: controller.signal,
-    pollIdleMs: 10000, // намеренно долго: команду должен разбудить кадр state
+    pollIdleMs: 10000, // deliberately long: the command must be woken by a state frame
   })
 
-  // 2. ждём, пока заявка появится, и одобряем её как человек в админке
+  // 2. wait until the application appears and approve it like a human in the admin UI
   let pending = []
   for (let i = 0; i < 200 && !pending.length; i++) {
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -120,7 +120,7 @@ test('клиент регистрируется сам, объявляет shell
   const approved = await admin(`/v1/admin/pending/${pending[0].uuid}/approve`, { method: 'POST', body: '{}' })
   assert.equal(approved.status, 200)
 
-  // 3. ждём, пока клиент получит токен и объявит bash
+  // 3. wait until the client gets the token and announces bash
   let state = live(base)
   for (let i = 0; i < 200 && !state.apiIds?.shell; i++) {
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -129,7 +129,7 @@ test('клиент регистрируется сам, объявляет shell
   assert.ok(state.apiIds?.shell, `клиент не объявился; лог: ${lines.join(' | ')}`)
   assert.ok(state.token, 'токен не сохранён')
 
-  // 4. ставим команду от лица сервера и ждём результата
+  // 4. place a command on behalf of the server and wait for the result
   const node = store.nodes()[0]
   const apiId = store.nodeApis(node.id)[0]
   const { seq, promise } = queue.enqueue({
@@ -148,7 +148,7 @@ test('клиент регистрируется сам, объявляет shell
   assert.equal(outcome.status, 'ok', `команда не исполнилась: ${JSON.stringify(outcome)}; лог: ${lines.join(' | ')}`)
   assert.match(outcome.results[0].text, /привет из bash/)
 
-  // 5. курсор клиента уехал на номер команды (клиент пишет его после ответа)
+  // 5. the client cursor moved to the command number (the client writes it after the answer)
   for (let i = 0; i < 100 && state.cursor !== seq; i++) {
     await new Promise((resolve) => setTimeout(resolve, 50))
     state = live(base)
@@ -156,7 +156,7 @@ test('клиент регистрируется сам, объявляет shell
   assert.equal(state.cursor, seq)
 })
 
-test('состояние соединения сохраняется per URL', skipInCi, async () => {
+test('connection state is kept per URL', skipInCi, async () => {
   let state = live(base)
   assert.ok(state.epoch, 'epoch должен быть сохранён')
   assert.ok(state.cursor == null || state.cursor >= 1, 'курсор — максимум выданной пачки')
@@ -165,7 +165,7 @@ test('состояние соединения сохраняется per URL', s
   assert.equal(other.cursor, null, 'у другого сервера своё состояние')
 })
 
-test('idle-цикл не завершается сам: демон должен жить', skipInCi, async () => {
+test('the idle loop does not end by itself: the daemon must live', skipInCi, async () => {
   let state = live(base)
   delete state.apiIds // без объявления, присутствия и работы — самый опасный случай
   const fresh = new AbortController()

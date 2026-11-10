@@ -1,5 +1,5 @@
 /**
- * Файловый API: пути, версии, атомарность, коды ошибок.
+ * File API: paths, versions, atomicity, error codes.
  */
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -16,7 +16,7 @@ function sandbox () {
   return { root, ctx: { roots: [root] }, cleanup: () => rmSync(root, { recursive: true, force: true }) }
 }
 
-test('read отдаёт текст и версию, лишнее за пределами limit помечает truncated', async () => {
+test('read returns the text and the version, the excess beyond limit is marked truncated', async () => {
   const { root, ctx, cleanup } = sandbox()
   writeFileSync(join(root, 'a.txt'), 'привет мир')
   const all = payload(await files.handle({ method: 'read', args: { path: join(root, 'a.txt') } }, ctx))
@@ -28,7 +28,7 @@ test('read отдаёт текст и версию, лишнее за преде
   cleanup()
 })
 
-test('write создаёт каталоги и возвращает новую версию', async () => {
+test('write creates directories and returns a new version', async () => {
   const { root, ctx, cleanup } = sandbox()
   const target = join(root, 'sub/dir/b.txt')
   const answer = payload(await files.handle({ method: 'write', args: { path: target, content: 'ok' } }, ctx))
@@ -37,7 +37,7 @@ test('write создаёт каталоги и возвращает новую �
   cleanup()
 })
 
-test('write с ifVersion отказывает, если файл изменился', async () => {
+test('write with ifVersion refuses if the file has changed', async () => {
   const { root, ctx, cleanup } = sandbox()
   const target = join(root, 'c.txt')
   writeFileSync(target, 'первая')
@@ -49,7 +49,7 @@ test('write с ifVersion отказывает, если файл изменил�
   cleanup()
 })
 
-test('edit: не найдено, неоднозначно, replaceAll', async () => {
+test('edit: not found, ambiguous, replaceAll', async () => {
   const { root, ctx, cleanup } = sandbox()
   const target = join(root, 'd.txt')
   writeFileSync(target, 'кот и кот')
@@ -61,14 +61,14 @@ test('edit: не найдено, неоднозначно, replaceAll', async ()
   cleanup()
 })
 
-test('путь вне roots отвергается до обращения к диску', async () => {
+test('a path outside roots is rejected before touching the disk', async () => {
   const { ctx, cleanup } = sandbox()
   const answer = await files.handle({ method: 'read', args: { path: '/etc/hostname' } }, ctx)
   assert.equal(answer.code, 'path_denied')
   cleanup()
 })
 
-test('list и stat', async () => {
+test('list and stat', async () => {
   const { root, ctx, cleanup } = sandbox()
   writeFileSync(join(root, 'e.txt'), 'x')
   const listed = payload(await files.handle({ method: 'list', args: { path: root } }, ctx))
