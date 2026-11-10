@@ -25,15 +25,7 @@ import { runServer } from '../lib/runner.mjs'
 // End-to-end tests bring up the daemon, connect over websocket and execute commands
 // inside the sandbox: the GitHub runner has no bwrap, so here they are skipped, while
 // locally and on a live host they run in full.
-//
-// They are also skipped while the server still speaks the old protocol: main answers
-// `hello-ok` and reacts to `check_state`, while this client sends `state` frames and
-// `epoch`/`client_epoch` — the server ignores them, so the loop never gets a wake and
-// the command never arrives. Re-enable these three tests together with the server-side
-// epoch change.
-const skipInCi = process.env.CI
-  ? { skip: 'нужен bwrap и живой демон' }
-  : { skip: 'the dsh-nodes server on main still speaks hello/check_state, not state/epoch' }
+const skipInCi = process.env.CI ? { skip: 'нужен bwrap и живой демон' } : {}
 
 
 const NODES_CONFIG = { routePrefix: '/dsh-nodes', aliveTimeoutSeconds: 60, maxPendingEnroll: 50, maxBodyBytes: 65536 }
