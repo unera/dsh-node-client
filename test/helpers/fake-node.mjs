@@ -17,9 +17,17 @@ import { WebSocketServer } from 'ws'
  * @param {boolean} [options.pushOnCheckState] отвечать `state` сразу на `check_state`
  */
 export async function startFakeNode ({ commands = [], resultStatus = 200, pushOnCheckState = false } = {}) {
-  const calls = { commands: [], results: [], frames: [], announce: 0, state: 0 }
+  const calls = { commands: [], results: [], frames: [], announce: 0, state: 0, requests: [] }
+  // «сервер сломался»: плагин за прокси отдаёт HTML, а не JSON
+  let broken = null
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1')
+    calls.requests.push({ path: url.pathname, at: Date.now() })
+    if (broken) {
+      res.writeHead(broken, { 'content-type': 'text/html' })
+      res.end(`<html><body>${broken === 401 ? 'auth required' : 'not found'}</body></html>`)
+      return
+    }
     let body = ''
     req.on('data', (chunk) => { body += chunk })
     req.on('end', () => {
@@ -60,6 +68,12 @@ export async function startFakeNode ({ commands = [], resultStatus = 200, pushOn
 
   const wss = new WebSocketServer({ noServer: true })
   server.on('upgrade', (req, socket, head) => {
+    // «сломанный» сервер не поднимает и сокет: именно так ведёт себя прокси,
+    // который отдаёт HTML вместо апгрейда — соединение рвётся сразу
+    if (broken) {
+      socket.destroy()
+      return
+    }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
   })
   wss.on('connection', (ws) => {
@@ -86,6 +100,8 @@ export async function startFakeNode ({ commands = [], resultStatus = 200, pushOn
   return {
     url: `http://127.0.0.1:${port}/dsh-nodes`,
     calls,
+    /** Начать отвечать 404 и HTML, как прокси без поднятого плагина. */
+    breakHttp: (status = 404) => { broken = status },
     /** Разорвать все сокеты: проверяем переподключение, а не опрос. */
     dropSockets: () => {
       for (const client of wss.clients) client.terminate()

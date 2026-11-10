@@ -41,6 +41,7 @@ const execPlugin = {
 async function withNode (options, body) {
   const fake = await startFakeNode(options)
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-behaviour-'))
+  const previousHome = process.env.DSHNC_HOME
   process.env.DSHNC_HOME = dir
   const store = openStore()
   store.setToken(fake.url, 'test-token')
@@ -54,12 +55,13 @@ async function withNode (options, body) {
     plugins: [execPlugin],
   })
   try {
-    await body(fake, { printed })
+    await body(fake, { printed, store, url: fake.url })
   } finally {
     controller.abort()
     await run.catch(() => {})
     await fake.close().catch(() => {})
-    delete process.env.DSHNC_HOME
+    if (previousHome === undefined) delete process.env.DSHNC_HOME
+    else process.env.DSHNC_HOME = previousHome
     rmSync(dir, { recursive: true, force: true })
   }
 }
@@ -127,34 +129,64 @@ test('разрыв сокета не превращается в опрос: к�
 })
 
 test('повтор после ошибки выдерживает паузу, а не крутится по кадру сокета', async () => {
-  // сервер отвечает 404 HTML-страницей — как прокси, пока плагин не поднялся
-  const attempts = []
-  const server = createServer((req, res) => {
-    attempts.push(Date.now())
-    res.writeHead(404, { 'content-type': 'text/html' })
-    res.end('<html><body>not found</body></html>')
+  // Сначала сервер живой: клиент объявляется и держит сокет. Потом «прокси»
+  // начинает отдавать 404 HTML и рвёт соединение — именно тогда старый код
+  // (пауза, прерываемая кадром сокета) уходил в плотный цикл.
+  await withNode({}, async (fake, client) => {
+    assert.ok(await waitFor(() => fake.calls.frames.some((frame) => frame.t === 'hello')), 'клиент должен подключиться')
+
+    const brokenAt = Date.now()
+    fake.breakHttp()
+    fake.dropSockets()
+
+    // ждём, пока наберётся несколько попыток после поломки
+    await waitFor(() => fake.calls.requests.filter((entry) => entry.at > brokenAt).length >= 3, { timeoutMs: 12_000 })
+    const attempts = fake.calls.requests.filter((entry) => entry.at > brokenAt).map((entry) => entry.at)
+    assert.ok(attempts.length >= 2, `ожидали повторы, а их ${attempts.length}`)
+
+    // ни одна пауза не должна быть короче секунды: backoff идёт 1 → 2 → 4 с
+    const gaps = attempts.slice(1).map((at, index) => at - attempts[index])
+    for (const gap of gaps) {
+      assert.ok(gap >= 800, `пауза не выдержана: ${gaps.join(', ')} мс`)
+    }
+    // и пауза обязана РАСТИ. Старый код (пауза, прерываемая кадром сокета)
+    // тоже давал ~1 с между попытками, но никогда не удлинял её; замерено:
+    // новый — 1029 и 2029 мс, старый — 1017, 1034, 1020, 1023...
+    assert.ok(
+      Math.max(...gaps) >= 1500,
+      `backoff должен удлинять паузу, а интервалы: ${gaps.join(', ')} мс`,
+    )
+    assert.ok(gaps.length <= 3, `за это время попыток больше, чем велит backoff: ${gaps.join(', ')} мс`)
+    assert.ok(
+      client.printed.some((line) => /ответ не JSON|not JSON/i.test(line)),
+      `в логе должно быть сказано про не-JSON ответ, а там: ${client.printed.join(' | ')}`,
+    )
   })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const base = `http://127.0.0.1:${server.address().port}/dsh-nodes`
-  const dir = mkdtempSync(join(tmpdir(), 'dshnc-backoff-'))
+})
+
+test('401 без JSON не стирает токен узла', async () => {
+  // nginx basic-auth или Cloudflare отвечают 401 HTML: это не «токен не тот»,
+  // и терять привязку из-за прокси нельзя
+  const fake = await startFakeNode({})
+  const dir = mkdtempSync(join(tmpdir(), 'dshnc-401-'))
+  const previousHome = process.env.DSHNC_HOME
   process.env.DSHNC_HOME = dir
-  openStore().setToken(base, 'test-token')
+  const store = openStore()
+  store.setToken(fake.url, 'secret-token')
+  // сервер отвечает 401 HTML на всё (так ведёт себя basic-auth за прокси)
+  fake.breakHttp(401)
   const controller = new AbortController()
   const printed = []
-  const run = runServer({ url: base, config: { token: 'test-token' }, print: (line) => printed.push(line), signal: controller.signal, plugins: [execPlugin] })
+  const run = runServer({ url: fake.url, config: { token: 'secret-token' }, print: (line) => printed.push(line), signal: controller.signal, plugins: [execPlugin] })
   try {
-    await waitFor(() => attempts.length >= 2, { timeoutMs: 5000 })
-    const gap = attempts[1] - attempts[0]
-    assert.ok(gap >= 800, `между попытками должна быть пауза, а вышло ${gap} мс`)
-    assert.ok(
-      printed.some((line) => /ответ не JSON|not JSON/i.test(line)),
-      `в логе должно быть сказано про не-JSON ответ, а там: ${printed.join(' | ')}`,
-    )
+    await waitFor(() => printed.length > 0, { timeoutMs: 5000 })
+    assert.equal(store.token(fake.url), 'secret-token', 'токен должен остаться: 401 от прокси — не отказ узла')
   } finally {
     controller.abort()
     await run.catch(() => {})
-    await new Promise((resolve) => server.close(() => resolve()))
-    delete process.env.DSHNC_HOME
+    await fake.close().catch(() => {})
+    if (previousHome === undefined) delete process.env.DSHNC_HOME
+    else process.env.DSHNC_HOME = previousHome
     rmSync(dir, { recursive: true, force: true })
   }
 })
