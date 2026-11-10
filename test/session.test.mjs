@@ -36,3 +36,13 @@ test('session.id без сессии возвращает null, а не выду
   const payload = JSON.parse(answer.results[0].text)
   assert.equal(payload.session, null)
 })
+
+test('session.chdir просит барьер flushAround', async () => {
+  const session = await import('../lib/plugins/session.mjs')
+  const api = session.api()
+  const chdir = api.methods.find((method) => method.method === 'chdir')
+  assert.equal(chdir.special, 'flushAround', 'смену каталога нельзя ни обогнать, ни перегнать')
+  for (const method of api.methods.filter((item) => item.method !== 'chdir')) {
+    assert.equal(method.special ?? null, null, `${method.method} барьер не просит`)
+  }
+})

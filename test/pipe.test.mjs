@@ -68,3 +68,35 @@ test('служебное имя уходит в handleControl, обычное �
   const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
   assert.match(runner, /handleControl/, 'раннер обязан звать служебный обработчик')
 })
+
+test('#INTERNAL.FLUSH ждёт, пока опустеет пул, и только потом отвечает', async () => {
+  const { handleControl } = await import('../lib/plugins/shell.mjs')
+  let drained = false
+  let release
+  const drain = () => new Promise((resolve) => { release = () => { drained = true; resolve() } })
+  const pending = handleControl({ method: '#INTERNAL.FLUSH', args: {} }, { drain })
+  let settled = false
+  void pending.then(() => { settled = true })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(settled, false, 'пока пул занят, барьер молчит')
+  release()
+  const answer = await pending
+  assert.equal(answer.ok, true)
+  assert.equal(drained, true)
+  assert.equal(JSON.parse(answer.results[0].text).flushed, true)
+})
+
+test('#INTERNAL.FLUSH на пустом пуле — успех, а не ожидание', async () => {
+  const { handleControl } = await import('../lib/plugins/shell.mjs')
+  const answer = await handleControl({ method: '#INTERNAL.FLUSH', args: {} }, { drain: async () => {} })
+  assert.equal(answer.ok, true)
+  assert.equal(JSON.parse(answer.results[0].text).flushed, true)
+})
+
+test('раннер дожидается служебного обработчика', async () => {
+  const { readFileSync } = await import('node:fs')
+  const runner = readFileSync(new URL('../lib/runner.mjs', import.meta.url), 'utf8')
+  // без await ответ служебной команды уходил бы как `undefined`
+  assert.match(runner, /await plugin\.handleControl/, 'служебный обработчик обязан быть асинхронным')
+  assert.match(runner, /drain:/, 'контекст плагина должен отдавать ожидание пула')
+})
