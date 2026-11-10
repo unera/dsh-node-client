@@ -7,7 +7,9 @@ test('session.ping отвечает ok даже без хранилища сес
   const answer = await session.handle({ method: 'ping', args: {} }, {})
   assert.equal(answer.ok, true)
   const payload = JSON.parse(answer.results[0].text)
-  assert.equal(typeof payload.pong, 'number')
+  // своих замеров узел больше не делает: их считает правило timing на сервере
+  assert.equal(payload.pong ?? null, null)
+  assert.equal(typeof payload.upSeconds, 'number')
   assert.equal(payload.platform, process.platform)
   assert.match(payload.version, /^desktop-\d+\.\d+\.\d+$/)
 })
@@ -44,7 +46,15 @@ test('session.chdir просит барьер flushAround — отдельным
   for (const method of api.methods) {
     assert.equal(method.special ?? null, null, `${method.method}: правило не должно жить в apidef`)
   }
-  assert.deepEqual(api.rules, [{ method: 'chdir', rule: 'flushAround' }])
+  assert.deepEqual(api.rules, [
+    { method: 'chdir', rule: 'flushAround' },
+    // пинг мерит сервер: длительность по своим отметкам, смещение — по часам узла
+    {
+      method: 'ping',
+      rule: 'timing',
+      rulesOpts: { retNames: { durationMs: 'durationMs', clockSkewMs: 'clockSkewMs' } },
+    },
+  ])
 })
 
 test('правила плагинов собираются в announce.applyRules с именем API', async () => {
