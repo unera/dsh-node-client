@@ -22,7 +22,7 @@ import { WebSocketServer } from 'ws'
  * @param {number} [options.epoch] server generation named in the announce answer and in frames
  * @param {boolean} [options.bumpOnAnnounce] name a new generation on every announce
  * @param {string[]} [options.commandErrors] codes answered to `/v1/commands`, one per request
- * @param {number[]} [options.closeOnConnect] close codes for incoming sockets, one per connection
+ * @param {(number|{code: number, reason?: string})[]} [options.closeOnConnect] closes for incoming sockets, one per connection
  * @param {object|null} [options.pushState] `state` frame sent right after a socket connects
  */
 export async function startFakeNode ({
@@ -114,7 +114,10 @@ export async function startFakeNode ({
     calls.sockets += 1
     const drop = closeOnConnect.shift()
     if (drop) {
-      ws.close(drop, 'test close')
+      // a bare number is a code, an object names the code and the reason as well:
+      // the server tells `4001 replaced` from `4001 client-epoch` by the reason alone
+      const code = typeof drop === 'object' ? drop.code : drop
+      ws.close(code, typeof drop === 'object' ? (drop.reason ?? 'test close') : 'test close')
       return
     }
     if (pushState) ws.send(JSON.stringify({ t: 'state', epoch: currentEpoch, ...pushState }))

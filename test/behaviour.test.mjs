@@ -9,9 +9,11 @@
  */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 
 import { resolvePlugin } from '../lib/plugins/index.mjs'
@@ -291,4 +293,45 @@ test('max_commandno from a state frame is never adopted: the client reports only
     )
     assert.ok(sent().every((no) => no <= 1), `the server number must not be adopted: ${sent().join(', ')}`)
   })
+})
+
+test('a connection replaced by a newer instance makes the client exit instead of fighting', async () => {
+  // 4001 `replaced` means "another instance of this node is newer": reconnecting would make
+  // two daemons push each other out and raise `client_epoch` forever, so the client leaves
+  // with code 0 — a service manager must not restart such an exit.
+  const fake = await startFakeNode({ closeOnConnect: [{ code: 4001, reason: 'replaced' }] })
+  const dir = mkdtempSync(join(tmpdir(), 'dshnc-replaced-'))
+  const previousHome = process.env.DSHNC_HOME
+  process.env.DSHNC_HOME = dir
+  openStore().setToken(fake.url, 'test-token')
+  // the exit is a process-wide act: the check has to run in a child, exactly like a daemon
+  const runnerUrl = fileURLToPath(new URL('../lib/runner.mjs', import.meta.url))
+  const script = join(dir, 'daemon.mjs')
+  writeFileSync(script, `import { runServer } from ${JSON.stringify(runnerUrl)}
+runServer({ url: ${JSON.stringify(fake.url)}, config: { token: 'test-token' }, print: (line) => console.log(line), plugins: [] })
+  .catch((error) => { console.error(String(error)); process.exit(2) })
+`)
+  const child = spawn(process.execPath, [script], { env: { ...process.env, DSHNC_HOME: dir }, stdio: ['ignore', 'pipe', 'pipe'] })
+  let out = ''
+  child.stdout.on('data', (chunk) => { out += chunk })
+  child.stderr.on('data', (chunk) => { out += chunk })
+  const status = await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      resolve('timeout')
+    }, 15000)
+    child.on('exit', (code) => {
+      clearTimeout(timer)
+      resolve(code)
+    })
+  })
+  try {
+    assert.equal(status, 0, `the replaced instance must exit with code 0, got ${status}: ${out}`)
+    assert.match(out, /replaced by a newer instance|вытеснено более новым/, `the reason must reach the log: ${out}`)
+  } finally {
+    await fake.close().catch(() => {})
+    if (previousHome === undefined) delete process.env.DSHNC_HOME
+    else process.env.DSHNC_HOME = previousHome
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

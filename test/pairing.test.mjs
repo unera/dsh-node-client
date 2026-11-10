@@ -18,6 +18,7 @@ import { Queue } from '../../dsh-nodes/lib/queue.mjs'
 import { createNodesServer } from '../../dsh-nodes/lib/server.mjs'
 import { handleAdmin } from '../../dsh-nodes/lib/admin-api.mjs'
 import { createPresence } from '../../dsh-nodes/lib/ws.mjs'
+import * as serverPresence from '../../dsh-nodes/lib/ws.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { openStore } from '../lib/store.mjs'
 import { pairServer, runServer } from '../lib/runner.mjs'
@@ -27,10 +28,16 @@ import { loadPlugins } from '../lib/plugins/index.mjs'
 // End-to-end tests bring up the daemon, connect over websocket and execute commands
 // inside the sandbox: the GitHub runner has no bwrap, so here they are skipped, while
 // locally and on a live host they run in full.
-const skipInCi = process.env.CI ? { skip: 'нужен bwrap и живой демон' } : {}
-// the daemon against a real server needs the epoch protocol on the server side: main
-// still sends `hello-ok` and waits for `check_state`, so a `state` frame wakes nothing
-const skipServerProtocol = { skip: 'the dsh-nodes server on main still speaks hello/check_state, not state/epoch' }
+//
+// The other reason to skip is the server side: these checks need the epoch protocol. A
+// server that still waits for `check_state` ignores our `state` frames, so the loop never
+// wakes and the test hangs instead of failing. The presence module of an epoch server
+// exports the close codes it uses — that is the capability the client relies on, so it is
+// what decides whether the check can run at all.
+const EPOCH_SERVER = typeof serverPresence.CLOSE_EPOCH === 'number'
+const skip = process.env.CI
+  ? { skip: 'нужен bwrap и живой демон' }
+  : (EPOCH_SERVER ? {} : { skip: 'the dsh-nodes server here still speaks hello/check_state, not state/epoch' })
 
 
 const NODES_CONFIG = { routePrefix: '/dsh-nodes', aliveTimeoutSeconds: 60, maxPendingEnroll: 50, maxBodyBytes: 65536 }
@@ -50,6 +57,9 @@ before(async () => {
   store = new Store(join(dir, 'nodes.sqlite'))
   queue = new Queue({ epoch: store.bumpEpoch(), defaultTimeout: 5 })
   presence = createPresence({ WebSocketServer, prefix: '/dsh-nodes', store, queue })
+  // the server wakes a waiting node from `enqueue`: without this wiring the delivery of a
+  // command depends on the race between the test and the client's next poll
+  queue.setNotify?.((nodeId) => presence.notify(nodeId))
   const handler = createNodesServer({
     store,
     queue,
@@ -109,7 +119,7 @@ async function ensurePaired () {
   assert.ok(live(base).token, 'токен должен появиться после подключения')
 }
 
-test('a link from the admin UI connects the client without confirmation', skipInCi, async () => {
+test('a link from the admin UI connects the client without confirmation', skip, async () => {
   const link = await admin('/v1/admin/pairing', { method: 'POST', body: JSON.stringify({ ttlSeconds: 600 }) })
   assert.equal(link.status, 201)
   assert.match(link.body.url, /\?v=/)
@@ -129,7 +139,7 @@ test('a link from the admin UI connects the client without confirmation', skipIn
   assert.equal(again.status, 409, 'код одноразовый')
 })
 
-test('after connecting the client announces plugins and executes a command', skipInCi.skip ? skipInCi : skipServerProtocol, async () => {
+test('after connecting the client announces plugins and executes a command', skip, async () => {
   // the test must not depend on its neighbour: connect by itself if there is no token
   await ensurePaired()
   let state = live(base)
