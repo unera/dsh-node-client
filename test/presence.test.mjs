@@ -49,3 +49,82 @@ test('file transfer descriptions name the direction, not the other way round', a
   assert.match(t('files.copyToDevice.description'), /(host to this node|с хоста на этот узел|从主机复制文件到本节点)/)
   assert.match(t('files.copyFromDevice.description'), /(this node to the host|с этого узла на хост|从本节点复制文件到主机)/)
 })
+
+/**
+ * A socket that says nothing on its own: it can be opened, but it never reports a close.
+ *
+ * That is not a hypothetical: a route that vanished under an established TCP connection
+ * leaves exactly this — the library's `close()` sends a close frame and waits forever, no
+ * event arrives, and the daemon waits with it.
+ */
+class SilentSocket {
+  constructor () {
+    this.readyState = 1
+    this.listeners = new Map()
+    this.sent = []
+    this.closeCalled = false
+  }
+
+  addEventListener (type, handler) {
+    const list = this.listeners.get(type) ?? []
+    list.push(handler)
+    this.listeners.set(type, list)
+  }
+
+  emit (type, event) {
+    for (const handler of this.listeners.get(type) ?? []) handler(event)
+  }
+
+  send (data) { this.sent.push(data) }
+
+  close () { this.closeCalled = true }
+}
+
+/** Install the fake socket for the duration of one test. */
+function withSocket (socket, body) {
+  const original = globalThis.WebSocket
+  globalThis.WebSocket = function () { return socket }
+  return body().finally(() => { globalThis.WebSocket = original })
+}
+
+test('a channel that answers no ping is torn down by the client itself', async () => {
+  const socket = new SilentSocket()
+  await withSocket(socket, async () => {
+    const events = []
+    const lines = []
+    const { openPresence } = await import('../lib/presence.mjs')
+    openPresence({
+      base: 'http://127.0.0.1:9/x',
+      token: 'token',
+      pingInterval: 0.05,
+      onEvent: (event) => events.push(event),
+      log: (level, message) => lines.push(message),
+    })
+    socket.emit('open', {})
+    // one interval for the ping, one for the answer that never comes
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    assert.deepEqual(events.filter((event) => event.type === 'closed').map((e) => e.code), [4002],
+      'the daemon gets a closed event even though the socket never sent one')
+    assert.equal(socket.closeCalled, true, 'the abandoned socket is still asked to close')
+    assert.ok(lines.some((line) => line.includes('рву канал') || line.includes('tearing')),
+      'the forced teardown is visible in the log')
+  })
+})
+
+test('a channel that never opens does not hang the daemon either', async () => {
+  const socket = new SilentSocket()
+  await withSocket(socket, async () => {
+    const events = []
+    const { openPresence } = await import('../lib/presence.mjs')
+    openPresence({
+      base: 'http://127.0.0.1:9/x',
+      token: 'token',
+      pingInterval: 5,
+      openTimeoutMs: 60,
+      onEvent: (event) => events.push(event),
+    })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    assert.deepEqual(events.map((event) => event.code), [4003],
+      'an unopened channel ends with its own code instead of silence')
+  })
+})
