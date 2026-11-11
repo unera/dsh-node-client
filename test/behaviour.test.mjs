@@ -279,6 +279,22 @@ test('a socket closed with 4409 resets the epoch and starts over from the announ
   })
 })
 
+test('an idle node does not repeat "I am waiting" on a timer', async () => {
+  // The server arms `waiting` on every `state` and drops it only when it pushes work, so a
+  // periodic frame repeats a fact it already knows: a `last_seen` write and one more number
+  // in the panel every tick, for nothing. The frames that remain are the connect frame and
+  // the one after the first fetch.
+  await withNode({}, async (fake) => {
+    const frames = () => fake.calls.frames.filter((frame) => frame.t === 'state').length
+    assert.ok(await waitFor(() => frames() >= 1, { timeoutMs: 4000 }), 'the client must declare its state')
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    const settled = frames()
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    assert.equal(frames(), settled, `an idle node must not repeat state: ${settled} → ${frames()}`)
+    assert.ok(settled <= 3, `two frames are enough, got ${settled}`)
+  })
+})
+
 test('max_commandno named by the server is accepted, from the frame as well as from the batch', async () => {
   await withNode({
     commands: [{ seq: 1, api: 1, method: 'exec', args: {}, timeout: 10, sandbox: { mode: 'rw' } }],
