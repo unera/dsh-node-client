@@ -128,3 +128,46 @@ test('a channel that never opens does not hang the daemon either', async () => {
       'an unopened channel ends with its own code instead of silence')
   })
 })
+
+test('the channel is finished once, whoever notices first', async () => {
+  const socket = new SilentSocket()
+  await withSocket(socket, async () => {
+    const events = []
+    const { openPresence } = await import('../lib/presence.mjs')
+    openPresence({
+      base: 'http://127.0.0.1:9/x',
+      token: 'token',
+      pingInterval: 0.05,
+      onEvent: (event) => events.push(event),
+    })
+    socket.emit('open', {})
+    // the ping goes out, no answer comes, the watchdog finishes the channel
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    // and only now the library gets round to reporting the close it had all along
+    socket.emit('close', { code: 1000, reason: 'bye' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const closed = events.filter((event) => event.type === 'closed')
+    assert.deepEqual(closed.map((event) => event.code), [4002],
+      'the second report must not overwrite the first one or start a second reconnect')
+  })
+})
+
+test('a channel that opens quickly is not killed later by its own open watchdog', async () => {
+  const socket = new SilentSocket()
+  await withSocket(socket, async () => {
+    const events = []
+    const { openPresence } = await import('../lib/presence.mjs')
+    openPresence({
+      base: 'http://127.0.0.1:9/x',
+      token: 'token',
+      // the ping is off: only the open watchdog could fire here
+      pingInterval: 0,
+      openTimeoutMs: 60,
+      onEvent: (event) => events.push(event),
+    })
+    socket.emit('open', {})
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    assert.deepEqual(events.map((event) => event.code ?? event.type), [],
+      'an open channel must clear the handshake watchdog instead of being torn down later')
+  })
+})
