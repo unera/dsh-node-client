@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { pingDelay, pingMultiplier } from '../lib/ping-policy.mjs'
+import { policyFor } from '../lib/runner.mjs'
 
 test('the pause does not grow over the first five intervals without commands', () => {
   for (let ticks = 0; ticks < 5; ticks++) {
@@ -30,4 +31,25 @@ test('the pause in milliseconds and switching off with 0', () => {
   assert.equal(pingDelay({ pingInterval: 15, factor: 10, ticks: 6 }), 45_000)
   assert.equal(pingDelay({ pingInterval: 0 }), 0, 'ноль выключает пинг')
   assert.equal(pingDelay({ pingInterval: null }), 0)
+})
+
+/**
+ * The number is only useful if it reaches the socket. It used to be read by `onboard` and
+ * printed by `dshnc status`, while the policy that builds `openPresence` arguments did not
+ * carry it at all: the default there is 0, so a node configured for a 15-second ping never
+ * pinged — and the server panel showed it online with nothing received from it.
+ */
+test('the configured interval reaches the policy the socket is opened with', () => {
+  const config = {
+    pingInterval: 15,
+    maxPingIntervalFactor: 10,
+    policy: { 'https://a/dsh-nodes': { pingInterval: 30 } },
+  }
+  assert.equal(policyFor(config, 'https://a/dsh-nodes').pingInterval, 30, 'правило сервера главнее')
+  assert.equal(policyFor(config, 'https://b/dsh-nodes').pingInterval, 15, 'иначе общее число')
+  assert.equal(policyFor(config, 'https://b/dsh-nodes').maxPingIntervalFactor, 10)
+  // a config without the number is "pinging is off", never `undefined`: presence turns
+  // anything non-finite into silence anyway, but the policy is what people read
+  assert.equal(policyFor({}, 'https://b/dsh-nodes').pingInterval, 0)
+  assert.equal(policyFor({}, 'https://b/dsh-nodes').maxPingIntervalFactor, 0)
 })

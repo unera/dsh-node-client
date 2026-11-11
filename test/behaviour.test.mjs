@@ -279,19 +279,24 @@ test('a socket closed with 4409 resets the epoch and starts over from the announ
   })
 })
 
-test('max_commandno from a state frame is never adopted: the client reports only what it executed', async () => {
+test('max_commandno named by the server is accepted, from the frame as well as from the batch', async () => {
   await withNode({
     commands: [{ seq: 1, api: 1, method: 'exec', args: {}, timeout: 10, sandbox: { mode: 'rw' } }],
-    // the server names a number far ahead: there is no cursor to repair with it
+    // the number the server names is a fact about its queue: numbers spent before this
+    // process started are never handed out again, so a client that counts only its own
+    // batch can never catch up — the server answers every `state` with another one
     pushState: { max_commandno: 9999 },
   }, async (fake, client) => {
     assert.ok(await waitFor(() => fake.calls.results.length > 0), 'the client must execute the command')
     const sent = () => fake.calls.frames.filter((frame) => frame.t === 'state').map((frame) => frame.max_commandno)
+    // the claim is the maximum of "what I executed" and "what the server named": the frame
+    // arrives before the batch, so 9999 wins and 1 is never reported on its own
     assert.ok(
-      await waitFor(() => sent().includes(1), { timeoutMs: 4000 }),
-      `the executed command number must be reported; frames: ${sent().join(', ')} (log: ${client.printed.join(' | ')})`,
+      await waitFor(() => sent().includes(9999), { timeoutMs: 4000 }),
+      `the server number must be adopted from the frame; frames: ${sent().join(', ')} (log: ${client.printed.join(' | ')})`,
     )
-    assert.ok(sent().every((no) => no <= 1), `the server number must not be adopted: ${sent().join(', ')}`)
+    // and the claim never falls back: every later frame keeps the adopted number
+    assert.ok(sent().at(-1) === 9999, `the claim must not go backwards: ${sent().join(', ')}`)
   })
 })
 
