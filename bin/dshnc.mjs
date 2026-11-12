@@ -144,16 +144,25 @@ async function main (argv) {
             config: cfg ?? {},
             execStart: resolveExecStart(process.argv[1]),
             hasSudo: process.env.DSHNC_SUDO === '1',
+            hasToken: openStore().servers().length > 0,
           })
           applyAutostartAnswers(cfg ?? {}, answers)
         },
+        servers: () => openStore().servers(),
         status: (cfg) => {
-          const { url, policy } = pickPolicy(cfg ?? {})
+          const { url, policy } = pickPolicy(cfg ?? {}, openStore().servers())
+          // a token without rules is a normal state of a fresh node, and the header
+          // must say exactly that instead of "not connected": the connection is there
+          const configured = Object.keys(cfg?.policy ?? {}).length > 0
           return [
             `узел: ${cfg?.name ?? '—'}`,
             `сервер: ${url ?? 'не подключён'}`,
-            `каталоги: ${(policy.roots ?? cfg?.roots ?? []).join(', ') || '—'}`,
-            `режимы: base ${policy.base ?? '—'}, потолок ${policy.max ?? '—'}, вопросы ${policy.approver ?? '—'}`,
+            configured
+              ? `каталоги: ${(policy.roots ?? cfg?.roots ?? []).join(', ') || '—'}`
+              : 'правила: не заданы — их создаст раздел 1',
+            configured
+              ? `режимы: base ${policy.base ?? '—'}, потолок ${policy.max ?? '—'}, вопросы ${policy.approver ?? '—'}`
+              : 'режимы: по умолчанию base rw, потолок rw, вопросы none',
             `связь: пинг ${cfg?.pingInterval ?? 0} с`,
           ]
         },
@@ -177,6 +186,7 @@ async function main (argv) {
         config,
         execStart: resolveExecStart(process.argv[1]),
         hasSudo: process.env.DSHNC_SUDO === '1',
+        hasToken: openStore().servers().length > 0,
       })
       applyAutostartAnswers(config, result)
       openStore().saveSettings({ name: config.name, aliases: config.aliases })

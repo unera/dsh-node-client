@@ -95,3 +95,23 @@ test('renderConfig does not show internal fields', () => {
   assert.doesNotMatch(text, /"id"/)
   assert.match(text, /nbw/)
 })
+
+test('a connected node without rules can be configured: the server comes from the token', async () => {
+  // the bug this test remembers: a node paired a minute ago has a token but no rules,
+  // and the wizard told its owner "connect to a server first" and refused to work
+  let config = { name: 'mx', pingInterval: 15 }
+  const saved = []
+  const { ask } = asker([
+    '1', 'mx', '', '/home/unera/work', '/home/unera/work', 'rw', 'rw', 'none', 'y', '0',
+  ])
+  await runOnboard({
+    ask,
+    print: () => {},
+    load: () => config,
+    save: (patch) => { saved.push(patch); config = { ...config, ...patch }; return config },
+    autostart: async () => {},
+    servers: () => ['https://srv/dsh-nodes'],
+  })
+  assert.equal(saved.length, 1, 'правка записана')
+  assert.equal(saved[0].policy['https://srv/dsh-nodes'].roots[0], '/home/unera/work')
+})

@@ -240,6 +240,19 @@ on this machine — not cosmetics.
 `dshnc config key=value` changes top-level settings, `dshnc policy <url> key=value`
 changes per-server rules; both edit the file in place and keep its comments.
 
+### State on disk
+
+```
+~/.dshnc/config.yaml       settings: name, aliases, workdir, per-server rules
+~/.dshnc/credentials.yaml  node tokens (0600)
+~/.dshnc/state.sqlite      runtime: epoch, API numbers, session workdirs, audit
+```
+
+`config.yaml` is written from a commented template on the first run, so the keys
+explain themselves where they are read. An old `config.json` is migrated once on
+the first start and kept as `config.json.bak`; comments in the YAML survive every
+`dshnc config` and `dshnc policy` edit.
+
 ## Install
 
 ```
