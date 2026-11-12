@@ -148,23 +148,20 @@ claiming a name that is already taken is skipped.
 The owner of the machine decides what the server may do. Policy lives on the
 node, not on the server:
 
-```json
-{
-  "max": "full",        // absolute ceiling, never exceeded
-  "base": "rw",         // mode a command starts in; approved commands skip it
-  "approver": "local",  // local | server | none
-  "roots": ["/home/unera/work/ai"],
-  "workdir": "/home/unera/work/ai/.dsh",
-  "ask": {
-    "local": { "enabled": true, "tool": { "type": "external", "command": "zenity --text-info --width=600" } }
-  }
-}
+```yaml
+max: full        # absolute ceiling, never exceeded
+base: rw         # mode a command starts in; approved commands skip it
+approver: local  # local | server | none
+roots: [/home/unera/work/ai]
+workdir: /home/unera/work/ai/.dsh
+ask:
+  local: { enabled: true, tool: { type: external, command: "zenity --text-info --width=600" } }
 ```
 
-`dshnc policy` reads and edits it:
+`dshnc config` reads and edits it:
 
 ```sh
-dshnc policy https://host/dsh-nodes max=full base=rw approver=local \
+dshnc config max=full base=rw approver=local \
   tool="zenity --text-info --width=600"
 ```
 
@@ -230,6 +227,9 @@ on this machine — not cosmetics.
 
 - current values are shown in brackets and an empty answer keeps them, so the
   wizard never silently changes a node that already works;
+- `подключение` — a pairing link from the admin page (with a code it connects at
+  once, without one it waits for approval), or the address plus a token pasted by
+  hand: both end with the address in the config and the token in `credentials.yaml`;
 - `доступ` — name, session directory, allowed directories, ceiling (`ro`/`rw`/
   `full`), starting mode, who answers questions, and the command used to ask
   (any tool that exits 0 on "yes", not just `zenity`);
@@ -237,21 +237,47 @@ on this machine — not cosmetics.
 - `автозапуск` — delegates to the systemd unit wizard;
 - before writing, it prints the resulting config and asks for confirmation.
 
-`dshnc config key=value` changes top-level settings, `dshnc policy <url> key=value`
-changes per-server rules; both edit the file in place and keep its comments.
+`dshnc config key=value` shows or changes the settings and the rules; it edits the
+file in place and keeps its comments.
+
+### One node, one server, one config
+
+A client serves exactly one server: the address is a key of the config, and the
+access rules sit next to it instead of repeating per-server sections.
+
+```yaml
+server: https://dsh.uvw.ru/dsh-nodes
+name: mx.uvw.ru
+workdir: /home/unera/work
+roots: [/home/unera/work]
+max: rw          # ceiling: ro | rw | full
+base: rw         # the mode a command starts in
+approver: none   # who answers "allow wider": local | server | none
+```
+
+A second node on the same machine is a second config:
+
+```
+dshnc -c /etc/dshnc/backup.yaml daemon
+```
+
+The state stays common: `credentials.yaml` keeps the tokens of every address (they
+are keyed by URL), `state.sqlite` their runtime, so two configs never overwrite
+each other.
 
 ### State on disk
 
 ```
-~/.dshnc/config.yaml       settings: name, aliases, workdir, per-server rules
-~/.dshnc/credentials.yaml  node tokens (0600)
+~/.dshnc/config.yaml       settings: server, name, aliases, workdir, rules
+~/.dshnc/credentials.yaml  node tokens of every known address (0600)
 ~/.dshnc/state.sqlite      runtime: epoch, API numbers, session workdirs, audit
 ```
 
 `config.yaml` is written from a commented template on the first run, so the keys
-explain themselves where they are read. An old `config.json` is migrated once on
-the first start and kept as `config.json.bak`; comments in the YAML survive every
-`dshnc config` and `dshnc policy` edit.
+explain themselves where they are read. Older files are migrated once on the first
+start: a per-server `policy` map is flattened into the top-level keys, and a
+`config.json` becomes `config.yaml`, the original staying as `config.json.bak`.
+Comments in the YAML survive every `dshnc config` edit.
 
 ## Install
 
@@ -290,13 +316,15 @@ you a tagged release — pick npm for a node that has to keep working.
 | command | what it does |
 |---|---|
 | `dshnc connect <url>` | pairing link — at once, otherwise a request pending approval |
-| `dshnc daemon [url...]` | announce APIs, fetch commands, answer; no arguments — every configured server |
-| `dshnc status` | client id and saved servers |
-| `dshnc policy [url] [key=value…]` | show or change policy for one server |
+| `dshnc daemon` | announce APIs, fetch commands, answer; the server is the one named in the config |
+| `dshnc -c <file> <cmd>` | same with another config file (the tokens and the runtime stay shared) |
+| `dshnc status` | client id, the server and its state |
+| `dshnc config [key=value…]` | show or change settings and rules |
 | `dshnc audit [n]` | commands executed without the sandbox |
 | `dshnc workdir [path]` | show or set the session working directory |
 
-One client serves several servers: token, epoch and the connection counter are kept **per URL**.
+One config serves one server. Tokens live in a single `credentials.yaml` keyed by
+address, so several configs (`-c`) share them and never overwrite each other.
 
 ## Development
 

@@ -124,38 +124,35 @@ test('session.chdir switches the directory and remembers it', () => {
   rmSync(root, { recursive: true, force: true })
 })
 
-test('per-server rules override the global ones, the ceiling does not allow widening the mode', () => {
-  const config = {
-    workdir: '/home/u/work',
-    access: { max: 'ro', ask: true },
-    policy: { 'https://a/dsh-nodes': { max: 'full', ask: false } },
-  }
-  assert.equal(policyFor(config, 'https://a/dsh-nodes').max, 'full')
-  assert.equal(policyFor(config, 'https://a/dsh-nodes').ask, false)
-  assert.equal(policyFor(config, 'https://b/dsh-nodes').max, 'ro', 'для другого сервера — общий потолок')
+test('the ceiling of the node does not allow widening the mode', () => {
+  const config = { workdir: '/home/u/work', max: 'full', ask: false }
+  assert.equal(policyFor(config).max, 'full')
+  assert.equal(policyFor(config).ask, false)
   // the server asks for full, the node ceiling is ro
-  const sandbox = sandboxFor(config, { sandbox: { mode: 'full' }, session: null }, null, 'https://b/dsh-nodes')
+  const narrow = { ...config, max: 'ro' }
+  assert.equal(policyFor({ max: 'ro' }).max, 'ro', 'потолок берётся из конфига')
+  const sandbox = sandboxFor(narrow, { sandbox: { mode: 'full' }, session: null }, null)
   assert.equal(sandbox.mode, 'ro')
 })
 
 test('base lowers an ordinary command but not a confirmed one', () => {
-  const config = { access: { base: 'rw', max: 'full', approver: 'local' } }
-  assert.equal(sandboxFor(config, { sandbox: { mode: 'full' } }, null, 'u').mode, 'rw', 'обычная — по base')
+  const config = { base: 'rw', max: 'full', approver: 'local' }
+  assert.equal(sandboxFor(config, { sandbox: { mode: 'full' } }, null).mode, 'rw', 'обычная — по base')
   assert.equal(
-    sandboxFor(config, { sandbox: { mode: 'full' }, approved: 'id-1' }, null, 'u').mode,
+    sandboxFor(config, { sandbox: { mode: 'full' }, approved: 'id-1' }, null).mode,
     'full',
     'подтверждённую понижать нельзя',
   )
   // with approver: none base is not applied at all
-  const none = { access: { base: 'ro', max: 'full', approver: 'none' } }
-  assert.equal(sandboxFor(none, { sandbox: { mode: 'full' } }, null, 'u').mode, 'full')
+  const none = { base: 'ro', max: 'full', approver: 'none' }
+  assert.equal(sandboxFor(none, { sandbox: { mode: 'full' } }, null).mode, 'full')
   // a request already at base stays as it is
-  assert.equal(sandboxFor(config, { sandbox: { mode: 'ro' } }, null, 'u').mode, 'ro')
+  assert.equal(sandboxFor(config, { sandbox: { mode: 'ro' } }, null).mode, 'ro')
 })
 
 test('the node ceiling cuts even a confirmed command', () => {
-  const config = { access: { base: 'rw', max: 'rw', approver: 'local' } }
-  assert.equal(sandboxFor(config, { sandbox: { mode: 'full' }, approved: 'id' }, null, 'u').mode, 'rw')
+  const config = { base: 'rw', max: 'rw', approver: 'local' }
+  assert.equal(sandboxFor(config, { sandbox: { mode: 'full' }, approved: 'id' }, null).mode, 'rw')
 })
 
 test('"Permission denied" outside the allowed directories is a sandbox denial', () => {

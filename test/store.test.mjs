@@ -38,7 +38,7 @@ test('settings, token and runtime live in different files', () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('tokens of different servers do not get in each other way', () => {
+test('one token file serves several configs: addresses do not overwrite each other', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dshnc-store2-'))
   const store = openStore({ dir })
   store.setToken(URL_A, 'token-a')
@@ -47,10 +47,10 @@ test('tokens of different servers do not get in each other way', () => {
   store.writeState(URL_B, { epoch: 2 })
   assert.equal(store.token(URL_A), 'token-a')
   assert.equal(store.token(URL_B), 'token-b')
-  assert.deepEqual(store.servers().sort(), [URL_A, URL_B].sort())
+  assert.deepEqual(store.knownServers().sort(), [URL_A, URL_B].sort())
   store.forget(URL_B)
   assert.equal(store.token(URL_B), null)
-  assert.deepEqual(store.servers(), [URL_A])
+  assert.deepEqual(store.knownServers(), [URL_A])
   store.close()
   rmSync(dir, { recursive: true, force: true })
 })

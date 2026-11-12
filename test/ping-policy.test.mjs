@@ -43,13 +43,12 @@ test('the configured interval reaches the policy the socket is opened with', () 
   const config = {
     pingInterval: 15,
     maxPingIntervalFactor: 10,
-    policy: { 'https://a/dsh-nodes': { pingInterval: 30 } },
+    pingInterval: 30,
   }
-  assert.equal(policyFor(config, 'https://a/dsh-nodes').pingInterval, 30, 'правило сервера главнее')
-  assert.equal(policyFor(config, 'https://b/dsh-nodes').pingInterval, 15, 'иначе общее число')
-  assert.equal(policyFor(config, 'https://b/dsh-nodes').maxPingIntervalFactor, 10)
+  assert.equal(policyFor(config).pingInterval, 30, 'в конфиге ровно то, что в status')
+  assert.equal(policyFor(config).maxPingIntervalFactor, 10)
   // a config without the number is "pinging is off", never `undefined`: presence turns
   // anything non-finite into silence anyway, but the policy is what people read
-  assert.equal(policyFor({}, 'https://b/dsh-nodes').pingInterval, 0)
-  assert.equal(policyFor({}, 'https://b/dsh-nodes').maxPingIntervalFactor, 0)
+  assert.equal(policyFor({}).pingInterval, 0)
+  assert.equal(policyFor({}).maxPingIntervalFactor, 0)
 })

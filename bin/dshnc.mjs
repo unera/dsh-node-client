@@ -4,15 +4,20 @@
  *
  *   dshnc help
  *   dshnc connect <url>        apply on the server and wait for approval
- *   dshnc daemon [url...]      hold connections and execute commands
+ *   dshnc daemon               hold the connection and execute commands
  *   dshnc status               what is saved in ~/.dshnc
  *   dshnc version              client version and protocol version
  *
- * One client can work with several servers: the connection state
- * (token, epoch) is kept per URL.
+ * One client serves one server: the address is a key of the config. A second node
+ * on the same machine is a second config, chosen with `-c/--config <file>` — the
+ * tokens and the runtime stay common, because they are keyed by address.
  */
-import { join } from 'node:path'
+import { mkdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { createInterface } from 'node:readline/promises'
+
 import { loadConfig, normalizeUrl } from '../lib/config.mjs'
+import { connectTo } from '../lib/connect.mjs'
 import { enrollServer, pairServer, runServer } from '../lib/runner.mjs'
 import * as jobPlugin from '../lib/plugins/job.mjs'
 import { loadPlugins } from '../lib/plugins/index.mjs'
@@ -22,22 +27,18 @@ import { formatQuestion } from '../lib/ask.mjs'
 import { home, openStore } from '../lib/store.mjs'
 import * as api from '../lib/api.mjs'
 import { VERSION } from '../lib/api.mjs'
-import { createInterface } from 'node:readline/promises'
-import { mkdirSync } from 'node:fs'
-import { resolve } from 'node:path'
 
 const HELP = () => [
   t('help.title', { home: home() }),
   '',
+  '  ' + t('help.configFile'),
   '  ' + t('help.connect'),
   '  ' + t('help.connect2'),
   '  ' + t('help.daemon'),
   '  ' + t('help.daemon2'),
-  '  ' + t('help.daemon3'),
   '  ' + t('help.foreground'),
   '  ' + t('help.onboard'),
   '  ' + t('help.config'),
-  '  ' + t('help.policy'),
   '  ' + t('help.audit'),
   '  ' + t('help.workdir'),
   '  ' + t('help.autostart'),
@@ -50,24 +51,55 @@ const HELP = () => [
 ].join('\n')
 
 const out = (line) => process.stdout.write(`${line}\n`)
+const err = (line) => process.stderr.write(`${line}\n`)
 
-async function main (argv) {
+/**
+ * Pull `-c/--config` out of the arguments.
+ *
+ * The path goes into `DSHNC_CONFIG`, so that every module that opens the store — the
+ * daemon loop, the plugins, the enrollment — works with the same config without
+ * threading the path through half of the code.
+ */
+export function takeConfigPath (argv) {
+  const rest = []
+  let configPath = null
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '-c' || arg === '--config') {
+      configPath = argv[index + 1] ?? null
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--config=')) {
+      configPath = arg.slice('--config='.length)
+      continue
+    }
+    if (arg.startsWith('-c') && arg.length > 2) {
+      configPath = arg.slice(2)
+      continue
+    }
+    rest.push(arg)
+  }
+  return { configPath, argv: rest }
+}
+
+async function main (argvIn) {
   setLang(detectLang())
+  const { configPath, argv } = takeConfigPath(argvIn)
+  if (configPath) process.env.DSHNC_CONFIG = resolve(configPath)
+  const store = () => openStore({ configPath })
   const [command, ...rest] = argv
-  const config = loadConfig()
+  const config = loadConfig({ configPath })
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     out(HELP())
     return 0
   }
 
-  // Setup wizard: a menu, not a stream of questions. It behaves like the initial
-  // setup but is also good for edits: it offers the current values as
-  // defaults, so an empty answer changes nothing.
   // Device event: a button in a notification, readiness, anything.
   // Only the session and the text are required - the rest is optional.
   if (command === 'send-session') {
-    const args = process.argv.slice(3)
+    const args = rest.slice()
     const readFlag = (name) => {
       const index = args.indexOf(name)
       if (index < 0) return null
@@ -93,15 +125,12 @@ async function main (argv) {
       out('нужен текст события: например dshnc send-session --session <id> "перезагрузи dsh"')
       return 1
     }
-    const store = openStore()
-    const settings = store.settings ?? {}
-    const servers = Object.keys(settings.policy ?? {})
-    const base = servers[0]
+    const base = config.server ?? store().server()
     if (!base) {
-      out('нет сохранённого сервера: сначала dshnc connect <ссылка>')
+      out('в конфиге нет сервера: сначала dshnc connect <ссылка>')
       return 1
     }
-    const token = store.token(base)
+    const token = store().token(base)
     if (!token) {
       out('нет токена для этого сервера: подключись заново')
       return 1
@@ -124,8 +153,7 @@ async function main (argv) {
   }
 
   if (command === 'onboard') {
-    const store = openStore()
-    const { runOnboard, pickPolicy } = await import('../lib/onboard.mjs')
+    const { runOnboard } = await import('../lib/onboard.mjs')
     const rl = createInterface({ input: process.stdin, output: process.stdout })
     const ask = async (question) => {
       const answer = await rl.question(question)
@@ -135,8 +163,8 @@ async function main (argv) {
       await runOnboard({
         ask,
         print: (line) => out(line),
-        load: () => openStore().settings ?? {},
-        save: (patch) => openStore().saveSettings(patch),
+        load: () => store().settings ?? {},
+        save: (patch) => store().saveSettings(patch),
         autostart: async (cfg) => {
           const answers = await runAutostart({
             ask,
@@ -144,28 +172,18 @@ async function main (argv) {
             config: cfg ?? {},
             execStart: resolveExecStart(process.argv[1]),
             hasSudo: process.env.DSHNC_SUDO === '1',
-            hasToken: openStore().servers().length > 0,
+            hasToken: store().knownServers().length > 0,
           })
           applyAutostartAnswers(cfg ?? {}, answers)
         },
-        servers: () => openStore().servers(),
-        status: (cfg) => {
-          const { url, policy } = pickPolicy(cfg ?? {}, openStore().servers())
-          // a token without rules is a normal state of a fresh node, and the header
-          // must say exactly that instead of "not connected": the connection is there
-          const configured = Object.keys(cfg?.policy ?? {}).length > 0
-          return [
-            `узел: ${cfg?.name ?? '—'}`,
-            `сервер: ${url ?? 'не подключён'}`,
-            configured
-              ? `каталоги: ${(policy.roots ?? cfg?.roots ?? []).join(', ') || '—'}`
-              : 'правила: не заданы — их создаст раздел 1',
-            configured
-              ? `режимы: base ${policy.base ?? '—'}, потолок ${policy.max ?? '—'}, вопросы ${policy.approver ?? '—'}`
-              : 'режимы: по умолчанию base rw, потолок rw, вопросы none',
-            `связь: пинг ${cfg?.pingInterval ?? 0} с`,
-          ]
-        },
+        connect: (target) => connectTo({ target, config, store, print: out }),
+        status: (cfg) => [
+          `узел: ${cfg?.name ?? '—'}`,
+          `сервер: ${cfg?.server ?? 'не подключён'}`,
+          `каталоги: ${(cfg?.roots ?? []).join(', ') || '—'}`,
+          `режимы: base ${cfg?.base ?? '—'}, потолок ${cfg?.max ?? '—'}, вопросы ${cfg?.approver ?? '—'}`,
+          `связь: пинг ${cfg?.pingInterval ?? 0} с`,
+        ],
       })
     } finally {
       rl.close()
@@ -186,10 +204,10 @@ async function main (argv) {
         config,
         execStart: resolveExecStart(process.argv[1]),
         hasSudo: process.env.DSHNC_SUDO === '1',
-        hasToken: openStore().servers().length > 0,
+        hasToken: store().knownServers().length > 0,
       })
       applyAutostartAnswers(config, result)
-      openStore().saveSettings({ name: config.name, aliases: config.aliases })
+      store().saveSettings({ name: config.name, aliases: config.aliases })
       out(t('auto.nodeSummary', { name: config.name })
         + (config.aliases?.length ? t('auto.aliasesSuffix', { aliases: config.aliases.join(', ') }) : ''))
     } finally {
@@ -208,9 +226,9 @@ async function main (argv) {
       const dir = resolve(rest[0])
       mkdirSync(dir, { recursive: true })
       try {
-        openStore().saveSettings({ workdir: dir })
+        store().saveSettings({ workdir: dir })
       } catch (error) {
-        process.stderr.write(t('err.writeState', { message: error.message }) + '\n')
+        err(t('err.writeState', { message: error.message }))
         return 1
       }
       config.workdir = dir
@@ -221,85 +239,35 @@ async function main (argv) {
     return 0
   }
 
-  if (command === 'policy') {
-    const store = openStore()
-    const [url, ...pairs] = rest
-    if (!url) {
-      out(t('policy.current', { access: JSON.stringify(config.access ?? {}), roots: (config.roots ?? []).join(', ') || '—' }))
-      for (const [key, value] of Object.entries(config.policy ?? {})) {
-        out(`${key}: ${JSON.stringify(value)}`)
-      }
-      return 0
-    }
-    const target = normalizeUrl(url)
-    const patch = {}
-    for (const pair of pairs) {
-      // split at the first "=": the value itself may contain "=" (zenity --width=600)
-      const at = pair.indexOf('=')
-      if (at < 0) continue
-      const key = pair.slice(0, at)
-      const value = pair.slice(at + 1)
-      if (!value) continue
-      if (key === 'max') patch.max = value
-      if (key === 'ask') patch.ask = value === 'true' || value === '1'
-      if (key === 'roots') patch.roots = value.split(':').filter(Boolean)
-      if (key === 'base') patch.base = value
-      if (key === 'approver') patch.approver = value
-      if (key === 'tool') {
-        // external local approval tool: enable the channel and remember the command
-        patch.ask = { local: { enabled: true, tool: { type: 'external', command: value } } }
-      }
-      if (key === 'workdir') patch.workdir = resolve(value)
-    }
-    if (!Object.keys(patch).length) {
-      out(JSON.stringify(config.policy?.[target] ?? {}, null, 2))
-      return 0
-    }
-    config.policy ??= {}
-    config.policy[target] = { ...(config.policy[target] ?? {}), ...patch }
-    try {
-      store.saveSettings({ policy: config.policy })
-    } catch (error) {
-      // a frequent cause is an attempt to change the policy from inside the sandbox: writing
-      // to ~/.dshnc is not allowed there, and staying silent about it is not allowed either
-      process.stderr.write(t('err.writeState', { message: error.message }) + '\n')
-      return 1
-    }
-    out(t('policy.saved', { url: target, patch: JSON.stringify(patch) }))
-    return 0
-  }
-
-  // Top-level settings: what belongs to the client itself and not to a
-  // particular server. They are needed to change behaviour without editing the file by hand
-  // (and without the risk of breaking YAML comments).
   if (command === 'config') {
-    const store = openStore()
-    const pairs = rest
-    if (!pairs.length) {
-      const plain = { ...config }
-      delete plain.servers
-      delete plain.policy
-      out(JSON.stringify(plain, null, 2))
+    if (!rest.length) {
+      out(JSON.stringify(render(), null, 2))
       return 0
     }
     const patch = {}
-    for (const pair of pairs) {
+    for (const pair of rest) {
+      // split at the first "=": the value itself may contain "=" (zenity --width=600)
       const at = pair.indexOf('=')
       if (at < 0) continue
       const key = pair.slice(0, at)
       const raw = pair.slice(at + 1)
       if (!key || raw === '') continue
       const value = /^-?\d+(\.\d+)?$/.test(raw) ? Number(raw) : raw === 'true' ? true : raw === 'false' ? false : raw
-      patch[key] = value
+      if (key === 'roots') patch.roots = raw.split(':').filter(Boolean)
+      else if (key === 'workdir') patch.workdir = resolve(raw)
+      else if (key === 'tool') {
+        // external local approval tool: enable the channel and remember the command
+        patch.ask = { local: { enabled: true, tool: { type: 'external', command: raw } } }
+      } else patch[key] = value
     }
     if (!Object.keys(patch).length) {
       out(t('config.usage'))
       return 1
     }
     try {
-      store.saveSettings(patch)
+      store().saveSettings(patch)
     } catch (error) {
-      process.stderr.write(t('err.writeState', { message: error.message }) + '\n')
+      err(t('err.writeState', { message: error.message }))
       return 1
     }
     out(t('config.saved', { patch: JSON.stringify(patch) }))
@@ -308,7 +276,7 @@ async function main (argv) {
 
   if (command === 'audit') {
     const limit = Number(rest[0]) > 0 ? Number(rest[0]) : 20
-    const rows = openStore().readAudit(limit)
+    const rows = store().readAudit(limit)
     if (!rows.length) {
       out(t('audit.empty'))
       return 0
@@ -325,43 +293,44 @@ async function main (argv) {
   if (command === 'status') {
     out(t('status.id', { id: config.id }))
     out(t('status.name', { name: config.name }))
-    const store = openStore()
-    const servers = store.servers()
-    if (!servers.length) {
+    const server = config.server ?? store().server()
+    if (!server) {
       out(t('status.none'))
       return 0
     }
-    for (const url of servers) {
-      const state = { ...store.readState(url), token: store.token(url) }
-      out(t('status.server', {
-        url,
-        token: state.token ? t('status.token.yes') : t('status.token.no'),
-        epoch: state.epoch ?? '—',
-        alias: state.alias ? t('status.alias', { alias: state.alias }) : '',
-      }))
-    }
+    const state = { ...store().readState(server), token: store().token(server) }
+    out(t('status.server', {
+      url: server,
+      token: state.token ? t('status.token.yes') : t('status.token.no'),
+      epoch: state.epoch ?? '—',
+      alias: state.alias ? t('status.alias', { alias: state.alias }) : '',
+    }))
+    out(t('status.config', { file: store().files.settings }))
     return 0
   }
 
   if (command === 'connect') {
     const url = rest[0]
     if (!url) {
-      process.stderr.write(t('err.needUrl') + '\n')
+      err(t('err.needUrl'))
       return 2
     }
-    const withCode = url.includes('?')
-    const state = withCode
-      ? await pairServer({ url, config, print: out })
-      : await enrollServer({ url: normalizeUrl(url), config, print: out })
+    // the address becomes a key of the config: from now on this node serves exactly
+    // this server, and `daemon` does not need to be told again
+    const address = await connectTo({ target: { link: url }, config, store, print: out })
     out(t('connect.done'))
-    return state ? 0 : 1
+    return address ? 0 : 1
   }
 
   if (command === 'daemon') {
-    const urls = rest.filter((arg) => !arg.startsWith('--'))
-    const targets = urls.length ? urls.map(normalizeUrl) : openStore().servers()
-    if (!targets.length) {
-      process.stderr.write(t('err.nothingToServe') + '\n')
+    const extra = rest.filter((arg) => !arg.startsWith('--'))
+    if (extra.length) {
+      err(t('err.oneServer'))
+      return 2
+    }
+    const url = config.server ?? store().server()
+    if (!url) {
+      err(t('err.nothingToServe'))
       return 2
     }
     const controller = new AbortController()
@@ -380,10 +349,11 @@ async function main (argv) {
     // re-announces the API. We do nothing here so there is no second source of truth.
     const plugins = await loadPlugins({ dir: join(home(), 'plugins'), log: (level, message) => out(message) })
     out(t('version.line', { version: VERSION }))
-    out(t('daemon.servers', { servers: targets.join(', ') }))
+    out(t('daemon.server', { server: url }))
+    out(t('daemon.configFile', { file: store().files.settings }))
     out(t('daemon.plugins', { plugins: plugins.map((plugin) => plugin.api.name).join(', ') }))
     const shell = process.env.DSHNC_SHELL ?? '/bin/sh'
-    await Promise.all(targets.map((url) => runServer({
+    await runServer({
       url,
       config,
       print: (line) => out(line),
@@ -391,16 +361,21 @@ async function main (argv) {
       shell,
       plugins,
     }).catch((error) => {
-      if (error.message !== 'aborted') process.stderr.write(`${url}: ${error.message}\n`)
-    })))
+      if (error.message !== 'aborted') err(`${url}: ${error.message}`)
+    })
     return 0
   }
 
-  process.stderr.write(t('cmd.unknown', { command }) + '\n\n' + HELP())
+  err(t('cmd.unknown', { command }) + '\n\n' + HELP())
   return 2
 }
 
-main(process.argv.slice(2)).then((code) => process.exit(code)).catch((error) => {
-  process.stderr.write(t('err.generic', { message: error.message }) + '\n')
-  process.exit(1)
-})
+/** What `dshnc config` prints: the settings without the noise. */
+function render () {
+  const config = loadConfig({ configPath: process.env.DSHNC_CONFIG ?? null })
+  delete config.id
+  return config
+}
+
+const code = await main(process.argv.slice(2))
+process.exitCode = code
